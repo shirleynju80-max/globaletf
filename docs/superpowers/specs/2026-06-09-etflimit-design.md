@@ -35,7 +35,7 @@ Excluded from the first release:
 - Full coverage of all domestic funds.
 - Intraday scheduled refresh beyond one daily sync run.
 - Intraday premium or discount calculation and real-time estimated NAV calculation.
-- Guaranteed purchase limit accuracy across every sales channel. The app records source and channel because some fund companies apply channel-specific restrictions.
+- Guaranteed purchase limit accuracy across every sales channel. The default model treats A and C share classes as usually sharing the same agency-channel purchase limit, while F share classes are usually direct-sale or special-channel products with potentially higher limits. The app records source and channel when a source explicitly distinguishes them.
 
 ## Architecture
 
@@ -86,6 +86,7 @@ Required validation:
 
 - Premium or discount rows must include fund code, previous trading day, close price, closing premium or discount value, and turnover when available.
 - Purchase limit rows must include fund code, subscription status, source, and data date. If the source confirms a limit state but no amount can be parsed, the amount is stored as unknown rather than guessed.
+- Purchase limit rows should preserve share class and channel scope. A and C share classes default to the shared agency-channel limit when the source does not distinguish channels. F share classes default to direct-sale or special-channel scope when the source indicates F-specific limits.
 - Fee rows must include fund code, fee type, source, and data date. Tiered subscription and redemption fees are stored as structured tiers instead of collapsed into one number.
 - Holding rows must include fund code, stock code or stock name, NAV percentage, and report period.
 - Numeric fields must be parsed into stable units. Purchase limits are stored in yuan.
@@ -112,7 +113,7 @@ SQLite tables:
 - `funds`: normalized fund master data. Fields include fund code, name, fund type, exchange status, fund company, tracking target, share class, parent fund code when known, and enabled flag.
 - `fund_target_links`: many-to-many mapping between funds and target indices or stocks when needed.
 - `fund_quotes`: on-exchange quote snapshots. Fields include fund code, close price, closing premium discount rate, turnover, trade date, source, and sync run id.
-- `purchase_limits`: off-exchange purchase limit snapshots. Fields include fund code, status, limit amount yuan, limit unit, channel, source, data date, confidence, and sync run id.
+- `purchase_limits`: off-exchange purchase limit snapshots. Fields include fund code, share class, status, limit amount yuan, limit unit, channel scope, source, data date, confidence, and sync run id.
 - `fund_fees`: fee snapshots. Fields include fund code, fee type, rate, min holding days, max holding days, amount tier lower bound, amount tier upper bound, channel, source, data date, and sync run id.
 - `fund_holdings`: holding snapshots. Fields include fund code, stock code, stock name, NAV percentage, holding market value, report period, source, and sync run id.
 - `sync_runs`: one row per sync execution with started time, finished time, status, and summary.
@@ -234,6 +235,7 @@ Provider tests:
 - Use recorded HTML or JSON samples.
 - Verify parsing of ETF previous close quote and closing premium or discount data.
 - Verify parsing of purchase limit text and unknown amount handling.
+- Verify A and C share classes can share one agency-channel purchase limit while F share classes can carry a separate direct-sale or special-channel limit.
 - Verify parsing of share classes and fee schedules, including tiered subscription and redemption fees.
 - Verify the default subscription fee display uses the lowest purchase amount tier.
 - Verify redemption fee display uses holding-day tiers.
@@ -279,7 +281,7 @@ The project starts from an empty directory. The first implementation plan should
 ## Open Assumptions
 
 - The user wants local-only operation for the first release.
-- The user accepts that purchase limit data can vary by sales channel and must show source/channel labels.
+- Purchase limits are primarily modeled by share class. A and C share classes usually share the same agency-channel limit; F share classes usually represent direct-sale or special-channel products and may have higher limits. Channel labels are shown when the source explicitly distinguishes them.
 - Tiantian Fund should be tried first for off-exchange fund-level data, but it still needs fallback because page structure, channel-specific limits, and fee text can change.
 - East Money or exchange-backed sources should be tried first for on-exchange ETF and LOF quote, premium or discount, and turnover data.
 - On-exchange premium or discount comparison uses the previous trading day's closing data to reduce complexity and avoid unreliable intraday estimated NAV calculations.
