@@ -1,0 +1,21 @@
+import type { Target } from "../domain/types";
+
+const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8787";
+
+export async function fetchTargets(): Promise<Target[]> {
+  const response = await fetch(`${API_BASE}/api/targets`);
+  if (!response.ok) throw new Error(`Failed to fetch targets: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchIndexComparison(targetCode: string): Promise<{ onExchange: any[]; offExchange: any[] }> {
+  const response = await fetch(`${API_BASE}/api/index-comparison/${targetCode}`);
+  if (!response.ok) throw new Error(`Failed to fetch index comparison: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchSyncStatus(): Promise<Record<string, unknown>> {
+  const response = await fetch(`${API_BASE}/api/status`);
+  if (!response.ok) throw new Error(`Failed to fetch sync status: ${response.status}`);
+  return response.json();
+}
