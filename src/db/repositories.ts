@@ -47,6 +47,16 @@ export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBund
       @fundCode, @shareClass, @status, @limitAmountYuan, @limitUnit, @channelScope, @source, @dataDate, @confidence, @syncRunId
     )
   `);
+  const insertFee = db.prepare(`
+    INSERT INTO fund_fees (
+      fund_code, fee_type, rate, min_holding_days, max_holding_days, amount_tier_lower_bound,
+      amount_tier_upper_bound, channel_scope, source, data_date, sync_run_id
+    ) VALUES (
+      @fundCode, @feeType, @rate, @minHoldingDays, @maxHoldingDays, @amountTierLowerBound,
+      @amountTierUpperBound, @channelScope, @source, @dataDate, @syncRunId
+    )
+  `);
+  const deleteFeeSnapshot = db.prepare("DELETE FROM fund_fees WHERE fund_code = ? AND source = ? AND data_date = ?");
 
   const tx = db.transaction(() => {
     for (const fund of bundle.funds) {
@@ -66,9 +76,30 @@ export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBund
         limitUnit: limit.limitUnit ?? null
       });
     }
+    for (const key of uniqueFeeSnapshotKeys(bundle.fees)) {
+      deleteFeeSnapshot.run(key.fundCode, key.source, key.dataDate);
+    }
+    for (const fee of bundle.fees) {
+      insertFee.run({
+        ...fee,
+        minHoldingDays: fee.minHoldingDays ?? null,
+        maxHoldingDays: fee.maxHoldingDays ?? null,
+        amountTierLowerBound: fee.amountTierLowerBound ?? null,
+        amountTierUpperBound: fee.amountTierUpperBound ?? null
+      });
+    }
   });
 
   tx();
+}
+
+function uniqueFeeSnapshotKeys(fees: FeeTier[]): Array<{ fundCode: string; source: string; dataDate: string }> {
+  const keys = new Map<string, { fundCode: string; source: string; dataDate: string }>();
+  for (const fee of fees) {
+    const key = `${fee.fundCode}|${fee.source}|${fee.dataDate}`;
+    keys.set(key, { fundCode: fee.fundCode, source: fee.source, dataDate: fee.dataDate });
+  }
+  return [...keys.values()];
 }
 
 export function queryIndexComparison(db: Database.Database, targetCode: string): { onExchange: IndexComparisonRow[]; offExchange: IndexComparisonRow[] } {
@@ -87,8 +118,23 @@ export function queryIndexComparison(db: Database.Database, targetCode: string):
       l.limit_amount_yuan AS limitAmountYuan,
       l.channel_scope AS channelScope
     FROM funds f
-    LEFT JOIN fund_quotes q ON q.fund_code = f.code
-    LEFT JOIN purchase_limits l ON l.fund_code = f.code
+    LEFT JOIN fund_quotes q ON q.rowid = (
+      SELECT q2.rowid
+      FROM fund_quotes q2
+      WHERE q2.fund_code = f.code
+      ORDER BY q2.trade_date DESC,
+        CASE q2.source WHEN 'eastmoney' THEN 0 ELSE 1 END
+      LIMIT 1
+    )
+    LEFT JOIN purchase_limits l ON l.rowid = (
+      SELECT l2.rowid
+      FROM purchase_limits l2
+      WHERE l2.fund_code = f.code
+      ORDER BY l2.data_date DESC,
+        CASE l2.source WHEN 'tiantian-f10-jjfl' THEN 0 WHEN 'tiantian' THEN 1 ELSE 2 END,
+        l2.confidence DESC
+      LIMIT 1
+    )
     WHERE f.tracking_target_code = ? AND f.enabled = 1
   `).all(targetCode) as IndexComparisonRow[];
 
