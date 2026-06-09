@@ -23,4 +23,22 @@ describe("repositories", () => {
     expect(result.offExchange).toHaveLength(1);
     expect(result.offExchange[0].limitAmountYuan).toBe(1000);
   });
+
+  it("keeps closing premium empty when same-date NAV is unavailable", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "513100", name: "纳指ETF", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true }
+      ],
+      quotes: [{ fundCode: "513100", closePrice: 1.23, closingPremiumDiscountRate: null, turnover: 120000000, tradeDate: "2026-06-08", source: "eastmoney", syncRunId: "run-1" }],
+      limits: [],
+      fees: [],
+      holdings: []
+    });
+
+    const result = queryIndexComparison(db, "NASDAQ_100");
+
+    expect(result.onExchange[0].closingPremiumDiscountRate).toBeNull();
+  });
 });

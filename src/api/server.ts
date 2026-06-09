@@ -7,6 +7,13 @@ import { TARGETS } from "../domain/targets";
 export function createApp(db: Database.Database) {
   const app = express();
 
+  app.use((_req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    next();
+  });
+
   app.get("/api/targets", (_req, res) => {
     res.json(TARGETS);
   });

@@ -16,7 +16,7 @@ interface IndexComparisonRow {
   venue: "on_exchange" | "off_exchange";
   shareClass: string;
   closePrice?: number;
-  closingPremiumDiscountRate?: number;
+  closingPremiumDiscountRate: number | null;
   turnover?: number;
   tradeDate?: string;
   status?: string;

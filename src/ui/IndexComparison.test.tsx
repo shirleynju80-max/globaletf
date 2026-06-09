@@ -17,4 +17,18 @@ describe("IndexComparison", () => {
     expect(screen.getByText("昨日收盘折溢价")).toBeInTheDocument();
     expect(screen.getByText(/仅供参考/)).toBeInTheDocument();
   });
+
+  it("shows a clear placeholder when same-date NAV is missing", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [{ code: "513100", name: "纳指ETF", closePrice: 1.23, closingPremiumDiscountRate: null, turnover: 120000000, tradeDate: "2026-06-08", source: "eastmoney" }],
+          offExchange: []
+        }}
+      />
+    );
+
+    expect(screen.getByText("同日净值缺失")).toBeInTheDocument();
+  });
 });

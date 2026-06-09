@@ -17,7 +17,7 @@ export function migrate(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS fund_quotes (
       fund_code TEXT NOT NULL,
       close_price REAL NOT NULL,
-      closing_premium_discount_rate REAL NOT NULL,
+      closing_premium_discount_rate REAL,
       turnover REAL,
       trade_date TEXT NOT NULL,
       source TEXT NOT NULL,
@@ -64,5 +64,37 @@ export function migrate(db: Database.Database): void {
       sync_run_id TEXT NOT NULL,
       PRIMARY KEY (fund_code, stock_code, report_period, source)
     );
+  `);
+
+  relaxLegacyQuotePremiumConstraint(db);
+}
+
+function relaxLegacyQuotePremiumConstraint(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info(fund_quotes)").all() as Array<{ name: string; notnull: number }>;
+  const premiumColumn = columns.find((column) => column.name === "closing_premium_discount_rate");
+  if (!premiumColumn?.notnull) return;
+
+  db.exec(`
+    ALTER TABLE fund_quotes RENAME TO fund_quotes_legacy_notnull;
+
+    CREATE TABLE fund_quotes (
+      fund_code TEXT NOT NULL,
+      close_price REAL NOT NULL,
+      closing_premium_discount_rate REAL,
+      turnover REAL,
+      trade_date TEXT NOT NULL,
+      source TEXT NOT NULL,
+      sync_run_id TEXT NOT NULL,
+      PRIMARY KEY (fund_code, trade_date, source)
+    );
+
+    INSERT INTO fund_quotes (
+      fund_code, close_price, closing_premium_discount_rate, turnover, trade_date, source, sync_run_id
+    )
+    SELECT
+      fund_code, close_price, closing_premium_discount_rate, turnover, trade_date, source, sync_run_id
+    FROM fund_quotes_legacy_notnull;
+
+    DROP TABLE fund_quotes_legacy_notnull;
   `);
 }

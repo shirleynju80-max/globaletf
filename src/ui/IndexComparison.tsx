@@ -37,7 +37,7 @@ export function IndexComparison({ targetName, data }: Props) {
                 <td className="mono">{row.code}</td>
                 <td>{row.name}</td>
                 <td>{row.closePrice}</td>
-                <td>{formatPercent(row.closingPremiumDiscountRate)}</td>
+                <td>{row.closingPremiumDiscountRate == null ? "同日净值缺失" : formatPercent(row.closingPremiumDiscountRate)}</td>
                 <td>{formatCurrency(row.turnover)}</td>
                 <td>{row.tradeDate}</td>
                 <td>{row.source}</td>
