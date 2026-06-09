@@ -18,9 +18,12 @@
 - `src/domain/types.ts`: shared domain types for targets, funds, quotes, limits, fees, holdings, sync metadata, and provider results.
 - `src/domain/targets.ts`: initial target universe for Nasdaq 100, S&P 500, Nikkei 225, Hang Seng TECH, NVDA, AAPL, MSFT, TSLA, META.
 - `src/domain/fees.ts`: fee-tier display and cost helpers.
+- `src/domain/quotes.ts`: previous-close premium/discount calculation and date matching rules.
+- `src/domain/holdings.ts`: overseas stock alias matching for disclosed fund holdings.
 - `src/domain/purchaseLimits.ts`: share-class and channel-scope logic for A/C/F purchase limits.
 - `src/providers/types.ts`: provider contracts, validation result types, and provider error categories.
 - `src/providers/providerChain.ts`: fallback orchestration across providers.
+- `src/providers/sourceCatalog.ts`: first-release data-source priorities, endpoint patterns, and parser expectations.
 - `src/providers/fixtures/*.json`: recorded sample data used by tests and mock providers.
 - `src/providers/mockProviders.ts`: deterministic mock providers for first UI/API integration and fallback tests.
 - `src/db/schema.ts`: SQLite schema creation.
@@ -323,7 +326,7 @@ export interface Fund {
 export interface FundQuote {
   fundCode: string;
   closePrice: number;
-  closingPremiumDiscountRate: number;
+  closingPremiumDiscountRate: number | null;
   turnover?: number;
   tradeDate: string;
   source: string;
@@ -662,7 +665,230 @@ git add src/providers/types.ts src/providers/providerChain.ts src/providers/prov
 git commit -m "Add provider fallback chain"
 ```
 
-## Task 5: SQLite Schema and Repository
+## Task 5: Data Source Catalog, Quote Rules, and Holding Aliases
+
+**Files:**
+- Create: `src/domain/quotes.ts`
+- Create: `src/domain/holdings.ts`
+- Create: `src/providers/sourceCatalog.ts`
+- Test: `src/domain/quotes.test.ts`
+- Test: `src/domain/holdings.test.ts`
+- Test: `src/providers/sourceCatalog.test.ts`
+
+- [ ] **Step 1: Write failing quote-rule tests**
+
+```ts
+// src/domain/quotes.test.ts
+import { describe, expect, it } from "vitest";
+import { calculateClosingPremiumDiscount } from "./quotes";
+
+describe("calculateClosingPremiumDiscount", () => {
+  it("calculates previous-close premium when trade date and NAV date match", () => {
+    expect(calculateClosingPremiumDiscount({ closePrice: 1.23, unitNav: 1.2, tradeDate: "2026-06-08", navDate: "2026-06-08" })).toBeCloseTo(0.025);
+  });
+
+  it("does not fabricate a premium when NAV date does not match trade date", () => {
+    expect(calculateClosingPremiumDiscount({ closePrice: 1.23, unitNav: 1.2, tradeDate: "2026-06-08", navDate: "2026-06-07" })).toBeNull();
+  });
+
+  it("does not calculate when NAV is zero or invalid", () => {
+    expect(calculateClosingPremiumDiscount({ closePrice: 1.23, unitNav: 0, tradeDate: "2026-06-08", navDate: "2026-06-08" })).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Write failing holding-alias tests**
+
+```ts
+// src/domain/holdings.test.ts
+import { describe, expect, it } from "vitest";
+import { matchesStockTarget } from "./holdings";
+
+describe("holding stock matching", () => {
+  it("matches disclosed English and Chinese names for NVDA", () => {
+    expect(matchesStockTarget({ targetCode: "NVDA", stockCode: "NVDA", stockName: "NVIDIA Corp" })).toBe(true);
+    expect(matchesStockTarget({ targetCode: "NVDA", stockCode: "", stockName: "英伟达" })).toBe(true);
+  });
+
+  it("does not match unrelated stocks", () => {
+    expect(matchesStockTarget({ targetCode: "NVDA", stockCode: "AAPL", stockName: "Apple Inc" })).toBe(false);
+  });
+});
+```
+
+- [ ] **Step 3: Write failing source-catalog tests**
+
+```ts
+// src/providers/sourceCatalog.test.ts
+import { describe, expect, it } from "vitest";
+import { HOLDING_SOURCES, OFF_EXCHANGE_SOURCES, ON_EXCHANGE_SOURCES } from "./sourceCatalog";
+
+describe("source catalog", () => {
+  it("prioritizes Tiantian/East Money F10 pages for off-exchange limits and fees", () => {
+    expect(OFF_EXCHANGE_SOURCES[0].name).toBe("tiantian-f10-jjfl");
+    expect(OFF_EXCHANGE_SOURCES[0].endpointPattern).toContain("fundf10.eastmoney.com/jjfl_{code}.html");
+    expect(OFF_EXCHANGE_SOURCES[0].parsingMode).toBe("html");
+  });
+
+  it("uses daily close plus same-date NAV for on-exchange premium calculation", () => {
+    expect(ON_EXCHANGE_SOURCES.map((source) => source.name)).toEqual([
+      "akshare-eastmoney-etf-lof-hist",
+      "akshare-eastmoney-open-fund-nav",
+      "eastmoney-etf-spot-cross-check"
+    ]);
+  });
+
+  it("uses fund_portfolio_hold_em as the first holdings source", () => {
+    expect(HOLDING_SOURCES[0].endpointPattern).toContain("fund_portfolio_hold_em");
+  });
+});
+```
+
+- [ ] **Step 4: Run tests to verify failure**
+
+Run: `npm test -- src/domain/quotes.test.ts src/domain/holdings.test.ts src/providers/sourceCatalog.test.ts`
+
+Expected: FAIL because the new modules do not exist.
+
+- [ ] **Step 5: Implement quote calculation**
+
+```ts
+// src/domain/quotes.ts
+interface ClosingPremiumInput {
+  closePrice: number;
+  unitNav: number;
+  tradeDate: string;
+  navDate: string;
+}
+
+export function calculateClosingPremiumDiscount(input: ClosingPremiumInput): number | null {
+  if (input.tradeDate !== input.navDate) return null;
+  if (!Number.isFinite(input.closePrice) || !Number.isFinite(input.unitNav) || input.unitNav <= 0) return null;
+  return (input.closePrice - input.unitNav) / input.unitNav;
+}
+```
+
+- [ ] **Step 6: Implement holding alias matching**
+
+```ts
+// src/domain/holdings.ts
+const STOCK_ALIASES: Record<string, string[]> = {
+  NVDA: ["NVDA", "NVIDIA", "NVIDIA CORP", "英伟达"],
+  AAPL: ["AAPL", "APPLE", "APPLE INC", "苹果"],
+  MSFT: ["MSFT", "MICROSOFT", "MICROSOFT CORP", "微软"],
+  TSLA: ["TSLA", "TESLA", "TESLA INC", "特斯拉"],
+  META: ["META", "META PLATFORMS", "FACEBOOK", "脸书"]
+};
+
+export function matchesStockTarget(input: { targetCode: string; stockCode?: string; stockName?: string }): boolean {
+  const aliases = STOCK_ALIASES[input.targetCode.toUpperCase()] ?? [input.targetCode.toUpperCase()];
+  const normalizedCode = normalize(input.stockCode ?? "");
+  const normalizedName = normalize(input.stockName ?? "");
+  return aliases.some((alias) => {
+    const normalizedAlias = normalize(alias);
+    return normalizedCode === normalizedAlias || normalizedName.includes(normalizedAlias);
+  });
+}
+
+function normalize(value: string): string {
+  return value.trim().toUpperCase().replace(/\\s+/g, " ");
+}
+```
+
+- [ ] **Step 7: Implement source catalog**
+
+```ts
+// src/providers/sourceCatalog.ts
+export type ParsingMode = "json" | "js_wrapped_json" | "html" | "library_adapter";
+
+export interface SourceDescriptor {
+  name: string;
+  endpointPattern: string;
+  parsingMode: ParsingMode;
+  provides: string[];
+  notes: string;
+}
+
+export const OFF_EXCHANGE_SOURCES: SourceDescriptor[] = [
+  {
+    name: "tiantian-f10-jjfl",
+    endpointPattern: "https://fundf10.eastmoney.com/jjfl_{code}.html",
+    parsingMode: "html",
+    provides: ["purchase_status", "purchase_limit_text", "subscription_fee_tiers", "redemption_fee_tiers", "management_fee", "custodian_fee", "sales_service_fee"],
+    notes: "Primary off-exchange source. Parse carefully because fee and limit text can be table or free text."
+  },
+  {
+    name: "eastmoney-fundcode-search",
+    endpointPattern: "https://fund.eastmoney.com/js/fundcode_search.js",
+    parsingMode: "js_wrapped_json",
+    provides: ["fund_universe", "fund_name", "fund_type", "share_class_hint"],
+    notes: "Use for initial fund universe and share-class suffix inference."
+  },
+  {
+    name: "eastmoney-f10-lsjz-status",
+    endpointPattern: "https://fundf10.eastmoney.com/F10DataApi.aspx?type=lsjz&code={code}&page=1&per=1",
+    parsingMode: "js_wrapped_json",
+    provides: ["subscribe_status", "redeem_status", "nav_date"],
+    notes: "Fallback status cross-check. Do not silently override newer detail-page data when dates differ."
+  }
+];
+
+export const ON_EXCHANGE_SOURCES: SourceDescriptor[] = [
+  {
+    name: "akshare-eastmoney-etf-lof-hist",
+    endpointPattern: "ak.fund_etf_hist_em(symbol, period='daily', adjust='') / ak.fund_lof_hist_em(symbol, period='daily', adjust='')",
+    parsingMode: "library_adapter",
+    provides: ["close_price", "turnover", "trade_date"],
+    notes: "Primary source for previous completed trading day close and turnover."
+  },
+  {
+    name: "akshare-eastmoney-open-fund-nav",
+    endpointPattern: "ak.fund_open_fund_info_em(symbol, indicator='单位净值走势')",
+    parsingMode: "library_adapter",
+    provides: ["unit_nav", "nav_date"],
+    notes: "Use only when nav_date exactly matches trade_date; otherwise leave closing premium/discount null."
+  },
+  {
+    name: "eastmoney-etf-spot-cross-check",
+    endpointPattern: "ak.fund_etf_spot_em() / East Money push2delay clist",
+    parsingMode: "library_adapter",
+    provides: ["quote_screen_premium_discount", "latest_price", "turnover"],
+    notes: "ETF-only lower-confidence cross-check. Do not use for intraday estimated NAV in the first release."
+  }
+];
+
+export const HOLDING_SOURCES: SourceDescriptor[] = [
+  {
+    name: "akshare-eastmoney-fund-portfolio-hold",
+    endpointPattern: "ak.fund_portfolio_hold_em(symbol='{fundCode}', date='{year}')",
+    parsingMode: "library_adapter",
+    provides: ["stock_code", "stock_name", "nav_percent", "holding_market_value", "report_period"],
+    notes: "Primary holdings source for report-period concentration ranking. Match overseas stocks by code and alias."
+  },
+  {
+    name: "eastmoney-f10-jjcc",
+    endpointPattern: "https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code={code}&year={year}&topline=10",
+    parsingMode: "js_wrapped_json",
+    provides: ["stock_name", "nav_percent", "holding_market_value", "report_period"],
+    notes: "Fallback holdings source with JS-wrapped HTML content."
+  }
+];
+```
+
+- [ ] **Step 8: Run tests**
+
+Run: `npm test -- src/domain/quotes.test.ts src/domain/holdings.test.ts src/providers/sourceCatalog.test.ts`
+
+Expected: PASS.
+
+- [ ] **Step 9: Commit source rules**
+
+```bash
+git add src/domain/quotes.ts src/domain/holdings.ts src/providers/sourceCatalog.ts src/domain/quotes.test.ts src/domain/holdings.test.ts src/providers/sourceCatalog.test.ts
+git commit -m "Add data source and quote rules"
+```
+
+## Task 6: SQLite Schema and Repository
 
 **Files:**
 - Create: `src/db/schema.ts`
@@ -731,7 +957,7 @@ export function migrate(db: Database.Database): void {
     CREATE TABLE IF NOT EXISTS fund_quotes (
       fund_code TEXT NOT NULL,
       close_price REAL NOT NULL,
-      closing_premium_discount_rate REAL NOT NULL,
+      closing_premium_discount_rate REAL,
       turnover REAL,
       trade_date TEXT NOT NULL,
       source TEXT NOT NULL,
@@ -870,7 +1096,7 @@ git add src/db/schema.ts src/db/database.ts src/db/repositories.ts src/db/reposi
 git commit -m "Add SQLite snapshot repository"
 ```
 
-## Task 6: Mock Sync Runner
+## Task 7: Mock Sync Runner
 
 **Files:**
 - Create: `src/providers/mockProviders.ts`
@@ -981,7 +1207,7 @@ git add src/providers/mockProviders.ts src/sync/syncRunner.ts src/sync/cli.ts sr
 git commit -m "Add mock daily sync runner"
 ```
 
-## Task 7: Local API
+## Task 8: Local API
 
 **Files:**
 - Create: `src/api/server.ts`
@@ -1101,7 +1327,7 @@ git add src/api/server.ts src/api/client.ts src/api/server.test.ts
 git commit -m "Add local comparison API"
 ```
 
-## Task 8: First React UI
+## Task 9: First React UI
 
 **Files:**
 - Modify: `src/App.tsx`
@@ -1178,7 +1404,7 @@ export function IndexComparison({ targetName, data }: Props) {
               <td>{row.code}</td>
               <td>{row.name}</td>
               <td>{row.closePrice}</td>
-              <td>{formatPercent(row.closingPremiumDiscountRate)}</td>
+              <td>{row.closingPremiumDiscountRate == null ? "同日净值缺失" : formatPercent(row.closingPremiumDiscountRate)}</td>
               <td>{row.turnover ?? "-"}</td>
               <td>{row.tradeDate}</td>
               <td>{row.source}</td>
@@ -1343,7 +1569,7 @@ git add src/App.tsx src/styles.css src/ui/DataStatus.tsx src/ui/IndexComparison.
 git commit -m "Add first comparison UI"
 ```
 
-## Task 9: Verification and Local Run
+## Task 10: Verification and Local Run
 
 **Files:**
 - Modify: `README.md`
@@ -1422,6 +1648,6 @@ git commit -m "Document local ETF limit workflow"
 
 ## Self-Review Notes
 
-- Spec coverage: the plan covers scaffold, targets, fee assumptions, purchase-limit share-class assumptions, provider fallback, SQLite snapshots, sync commands, local API, UI, and verification. Real provider scraping is intentionally deferred behind provider interfaces and mock providers for the first working vertical slice.
+- Spec coverage: the plan covers scaffold, targets, fee assumptions, purchase-limit share-class assumptions, provider fallback, explicit data-source catalog, previous-close premium calculation rules, holding alias matching, SQLite snapshots, sync commands, local API, UI, and verification. Real provider scraping is intentionally deferred behind provider interfaces and mock providers for the first working vertical slice, but the source catalog locks in first-release provider priorities and parser expectations.
 - Placeholder scan: no task depends on an unspecified function without first creating it in an earlier task.
 - Type consistency: domain names use `closingPremiumDiscountRate`, `channelScope`, `shareClass`, and `syncRunId` consistently across types, repository, sync, API, and UI.
