@@ -1,0 +1,102 @@
+import { formatPercent } from "../domain/fees";
+
+interface Props {
+  targetName: string;
+  data: { onExchange: any[]; offExchange: any[] };
+}
+
+export function IndexComparison({ targetName, data }: Props) {
+  return (
+    <section className="panel data-panel">
+      <div className="section-heading">
+        <div>
+          <p className="eyebrow">Index fund map</p>
+          <h2>{targetName} 同标的产品比较</h2>
+        </div>
+        <span className="source-pill">本地快照</span>
+      </div>
+      <p className="note">昨日收盘折溢价仅供参考，不代表当前盘中折溢价。</p>
+
+      <h3>场内 ETF/LOF</h3>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>代码</th>
+              <th>名称</th>
+              <th>昨日收盘价</th>
+              <th>昨日收盘折溢价</th>
+              <th>成交额</th>
+              <th>日期</th>
+              <th>来源</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.onExchange.map((row) => (
+              <tr key={row.code}>
+                <td className="mono">{row.code}</td>
+                <td>{row.name}</td>
+                <td>{row.closePrice}</td>
+                <td>{formatPercent(row.closingPremiumDiscountRate)}</td>
+                <td>{formatCurrency(row.turnover)}</td>
+                <td>{row.tradeDate}</td>
+                <td>{row.source}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h3>场外 A/C/F 份额</h3>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>代码</th>
+              <th>名称</th>
+              <th>份额</th>
+              <th>申购状态</th>
+              <th>限额</th>
+              <th>渠道范围</th>
+              <th>来源</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.offExchange.map((row) => (
+              <tr key={row.code}>
+                <td className="mono">{row.code}</td>
+                <td>{row.name}</td>
+                <td>{row.shareClass}</td>
+                <td>{formatStatus(row.status)}</td>
+                <td>{formatCurrency(row.limitAmountYuan)}</td>
+                <td>{formatChannelScope(row.channelScope)}</td>
+                <td>{row.source}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function formatCurrency(value?: number): string {
+  if (value == null) return "-";
+  if (value >= 100000000) return `${(value / 100000000).toFixed(2)} 亿`;
+  if (value >= 10000) return `${(value / 10000).toFixed(2)} 万`;
+  return `${value.toLocaleString("zh-CN")} 元`;
+}
+
+function formatStatus(status?: string): string {
+  if (status === "limited") return "限购";
+  if (status === "open") return "开放";
+  if (status === "suspended") return "暂停";
+  return "未知";
+}
+
+function formatChannelScope(scope?: string): string {
+  if (scope === "agency") return "代销共享";
+  if (scope === "direct") return "直销/特殊";
+  if (scope === "special") return "特殊渠道";
+  return "未知";
+}
