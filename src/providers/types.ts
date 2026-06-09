@@ -1,0 +1,38 @@
+export type ProviderErrorCategory =
+  | "network"
+  | "http"
+  | "anti_scraping"
+  | "parse"
+  | "missing_fields"
+  | "stale_data"
+  | "conflict";
+
+export type ProviderFetchResult<T> =
+  | {
+      ok: true;
+      data: T;
+      source: string;
+      dataDate: string;
+      confidence: number;
+      rawPayloadHash?: string;
+    }
+  | {
+      ok: false;
+      errorCategory: ProviderErrorCategory;
+      message: string;
+      rawPayloadHash?: string;
+    };
+
+export interface DataProvider<T> {
+  name: string;
+  fetch: () => Promise<ProviderFetchResult<T>>;
+}
+
+export interface ProviderAttempt {
+  providerName: string;
+  ok: boolean;
+  errorCategory?: ProviderErrorCategory;
+  message?: string;
+  dataDate?: string;
+  rawPayloadHash?: string;
+}
