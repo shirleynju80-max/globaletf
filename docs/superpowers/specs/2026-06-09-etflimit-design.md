@@ -10,6 +10,7 @@ Build a local web tool for comparing mainland China funds that provide exposure 
 2. For a popular overseas stock such as NVDA or AAPL, which mainland funds have the highest holding concentration in that stock?
 
 The tool presents data for comparison only. It does not provide trading advice.
+For index targets, the comparison must treat different product structures as first-class data: on-exchange ETF or LOF products, off-exchange feeder funds, and share classes such as A, C, and F may all track the same target but have different liquidity, premium or discount, purchase limits, and fee costs.
 
 ## First Release Scope
 
@@ -20,8 +21,8 @@ Included:
 - Overseas index targets: Nasdaq 100, S&P 500, Nikkei 225, Hang Seng TECH.
 - Popular overseas stocks: NVDA, AAPL, MSFT, TSLA, META.
 - Extensible target configuration so more indices or stocks can be added later.
-- On-exchange fund comparison with price, estimated NAV or IOPV when available, premium or discount, turnover, data date, and data source.
-- Off-exchange fund comparison with purchase status, per-day or per-order purchase limit, channel note when known, data date, and data source.
+- On-exchange fund comparison with price, estimated NAV or IOPV when available, premium or discount, turnover, trading cost context when available, data date, and data source.
+- Off-exchange fund comparison with product share class, purchase status, per-day or per-order purchase limit, subscription fee, redemption fee, management fee, custodian fee, sales service fee when applicable, channel note when known, data date, and data source.
 - Fund holding concentration ranking for the preset popular stocks.
 - Daily scheduled data synchronization.
 - Multi-source fallback. If the primary provider fails or returns incomplete data, the sync layer tries another provider.
@@ -49,9 +50,11 @@ The web UI does not fetch public financial sites directly. It reads the latest l
 
 Candidate sources:
 
+- East Money and exchange-backed sources should be preferred for on-exchange ETF or LOF quote, premium or discount, turnover, and trading data.
+- Tiantian Fund should be the preferred source for off-exchange fund detail pages, subscription status, purchase limit text, share class information, and fee schedules when the fields are available.
 - AkShare interfaces backed by East Money, especially ETF real-time quote data such as `fund_etf_spot_em`, which exposes ETF quote and premium or discount fields in public documentation.
 - AkShare/East Money fund holding interfaces such as `fund_portfolio_hold_em`, which return stock holdings, NAV percentage, market value, and reporting period.
-- East Money and Tiantian Fund public fund pages or APIs for fund details, subscription status, and purchase limit text.
+- East Money public fund pages or APIs as fallback sources for off-exchange fund details, subscription status, purchase limit text, fee schedules, and holdings.
 - Exchange ETF files or public exchange data where useful for ETF creation/redemption metadata.
 
 Each source must pass field-level validation before its data can update a successful snapshot.
@@ -63,6 +66,7 @@ Each data provider implements a shared interface:
 - Fetch ETF quotes and premium or discount data.
 - Fetch fund basic details.
 - Fetch off-exchange purchase status and purchase limit data.
+- Fetch fund fee schedules, including purchase, redemption, management, custodian, and sales service fees.
 - Fetch fund portfolio holdings.
 
 The provider chain works by data type:
@@ -81,6 +85,7 @@ Required validation:
 
 - Premium or discount rows must include fund code, quote time or date, latest price, and premium or discount value.
 - Purchase limit rows must include fund code, subscription status, source, and data date. If the source confirms a limit state but no amount can be parsed, the amount is stored as unknown rather than guessed.
+- Fee rows must include fund code, fee type, source, and data date. Tiered subscription or redemption fees are stored as structured tiers instead of collapsed into one number.
 - Holding rows must include fund code, stock code or stock name, NAV percentage, and report period.
 - Numeric fields must be parsed into stable units. Purchase limits are stored in yuan.
 - Conflicting provider results are not silently merged. The selected source is shown, and provider conflict metadata is available in sync status.
@@ -96,10 +101,11 @@ Staleness rules:
 SQLite tables:
 
 - `targets`: target index and stock dictionary. Fields include code, name, type, aliases, region, and display order.
-- `funds`: normalized fund master data. Fields include fund code, name, fund type, exchange status, fund company, tracking target, and enabled flag.
+- `funds`: normalized fund master data. Fields include fund code, name, fund type, exchange status, fund company, tracking target, share class, parent fund code when known, and enabled flag.
 - `fund_target_links`: many-to-many mapping between funds and target indices or stocks when needed.
 - `fund_quotes`: on-exchange quote snapshots. Fields include fund code, price, estimated NAV or IOPV, premium discount rate, turnover, quote date, quote time, source, and sync run id.
 - `purchase_limits`: off-exchange purchase limit snapshots. Fields include fund code, status, limit amount yuan, limit unit, channel, source, data date, confidence, and sync run id.
+- `fund_fees`: fee snapshots. Fields include fund code, fee type, rate, min holding days, max holding days, amount tier lower bound, amount tier upper bound, channel, source, data date, and sync run id.
 - `fund_holdings`: holding snapshots. Fields include fund code, stock code, stock name, NAV percentage, holding market value, report period, source, and sync run id.
 - `sync_runs`: one row per sync execution with started time, finished time, status, and summary.
 - `provider_results`: per-provider status for each sync run and data type, including success, failure reason, data date, and payload hash.
@@ -113,6 +119,7 @@ The project provides:
 - `npm run sync:daily`: run all daily sync tasks.
 - `npm run sync:quotes`: refresh on-exchange quotes and premium or discount data.
 - `npm run sync:limits`: refresh purchase status and purchase limits.
+- `npm run sync:fees`: refresh fee schedules.
 - `npm run sync:holdings`: refresh fund holding concentration data.
 
 The daily job can be installed through launchd or cron. The app should document both options, but the code only needs to provide the runnable command.
@@ -136,15 +143,22 @@ Input:
 
 Output:
 
-- On-exchange funds table: code, name, tracking target, latest price, estimated NAV or IOPV, premium or discount rate, turnover, quote time, source, and status.
-- Off-exchange funds table: code, name, subscription status, purchase limit amount, limit unit, channel note, data date, source, and status.
+- On-exchange funds table: code, name, tracking target, latest price, estimated NAV or IOPV, premium or discount rate, turnover, estimated trading cost context when available, quote time, source, and status.
+- Off-exchange funds table: code, name, share class such as A, C, or F, subscription status, purchase limit amount, limit unit, subscription fee, redemption fee summary, management fee, custodian fee, sales service fee, channel note, data date, source, and status.
 
 Default ranking:
 
 1. Purchasable funds first.
 2. Higher known purchase limit first for off-exchange funds.
-3. Lower premium or larger discount first for on-exchange funds.
-4. Higher turnover as a liquidity tie-breaker.
+3. Lower total visible cost for the intended holding style when enough fee data is available.
+4. Lower premium or larger discount first for on-exchange funds.
+5. Higher turnover as a liquidity tie-breaker.
+
+The UI should group funds by target first, then product structure:
+
+- On-exchange ETF or LOF products.
+- Off-exchange feeder or index fund share classes.
+- Related A, C, F, and other share classes under the same parent fund when the relationship is known.
 
 ### Stock Holding Concentration
 
@@ -174,6 +188,7 @@ A visible status area shows:
 - Provider used for each data type.
 - Failed provider reason when the latest daily sync failed.
 - Stale snapshot date when the UI is showing older successful data.
+- Separate freshness status for quote, purchase limit, fee, and holding data.
 
 ## Error Handling
 
@@ -199,6 +214,7 @@ Provider tests:
 - Use recorded HTML or JSON samples.
 - Verify parsing of ETF quote and premium or discount data.
 - Verify parsing of purchase limit text and unknown amount handling.
+- Verify parsing of share classes and fee schedules, including tiered subscription and redemption fees.
 - Verify parsing of fund holdings and report periods.
 
 Fallback tests:
@@ -210,6 +226,7 @@ Fallback tests:
 UI tests:
 
 - Verify index mode renders on-exchange and off-exchange tables.
+- Verify same-target products are grouped across on-exchange products and off-exchange A, C, F, or other share classes.
 - Verify stock mode renders concentration rankings.
 - Verify stale data warning and provider source labels.
 - Verify empty states when no snapshot exists.
@@ -230,6 +247,7 @@ The project starts from an empty directory. The first implementation plan should
 - SQLite schema and migration script
 - Provider interface and provider chain
 - Initial AkShare/East Money provider implementations or adapters
+- Initial Tiantian Fund provider implementation for fund details, purchase limits, and fee schedules
 - Sync CLI commands
 - Query API
 - First UI page
@@ -239,5 +257,7 @@ The project starts from an empty directory. The first implementation plan should
 
 - The user wants local-only operation for the first release.
 - The user accepts that purchase limit data can vary by sales channel and must show source/channel labels.
+- Tiantian Fund should be tried first for off-exchange fund-level data, but it still needs fallback because page structure, channel-specific limits, and fee text can change.
+- East Money or exchange-backed sources should be tried first for on-exchange ETF and LOF quote, premium or discount, and turnover data.
 - The first release can use a finite, configurable target universe rather than attempting full market discovery.
 - Holding concentration for popular stocks is based on published fund reports, so it is naturally delayed.
