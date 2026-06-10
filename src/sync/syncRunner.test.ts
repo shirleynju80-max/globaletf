@@ -98,6 +98,29 @@ describe("sync runner", () => {
     expect(result.onExchange[0]).toMatchObject({ code: "513100", closePrice: 1.3, closingPremiumDiscountRate: 0.02, source: "test-quotes" });
   });
 
+  it("falls back to the latest cached quotes when quote providers fail", async () => {
+    const db = createInMemoryDatabase();
+    await runDailySync(db);
+    const provider: DataProvider<FundQuote[]> = {
+      name: "blocked-quotes",
+      fetch: async () => ({ ok: false, errorCategory: "network", message: "socket closed" })
+    };
+
+    await runDailySync(db, { quoteProviders: [provider] });
+    const result = queryIndexComparison(db, "NASDAQ_100");
+    const status = querySyncStatus(db).quote;
+
+    expect(result.onExchange[0]).toMatchObject({ code: "513100", closePrice: 1.23, source: "eastmoney" });
+    expect(status).toMatchObject({
+      status: "fallback",
+      source: "local-cache",
+      dataDate: "2026-06-08",
+      itemCount: 1,
+      errorCategory: "network",
+      message: "socket closed"
+    });
+  });
+
   it("falls back to mock off-exchange snapshots when live providers fail", async () => {
     const db = createInMemoryDatabase();
     const provider: DataProvider<OffExchangeFeeLimitSnapshot> = {

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Fund } from "../domain/types";
-import { createEastMoneyOnExchangeQuoteProvider, eastMoneySecid, parseEastMoneyKlineLatest, parseEastMoneyNavLatest } from "./eastmoneyOnExchangeQuotes";
+import { createEastMoneyOnExchangeQuoteProvider, eastMoneySecid, parseEastMoneyKlineLatest, parseEastMoneyNavLatest, parseEastMoneySpotQuotes } from "./eastmoneyOnExchangeQuotes";
 
 const onExchangeFunds: Fund[] = [
   { code: "159513", name: "纳斯达克100ETF大成", fundType: "指数型-海外股票", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true },
@@ -17,6 +17,14 @@ const klinePayload = {
 };
 
 const navPayload = `var apidata={content:"<table><tbody><tr><td>2026-06-09</td><td>1.2000</td><td>1.2000</td></tr></tbody></table>",records:1,pages:1,curpage:1};`;
+const spotPayload = {
+  data: {
+    diff: [
+      { f12: "159513", f14: "纳斯达克100ETF大成", f18: 1.802, f6: 108316295.612 },
+      { f12: "513390", f14: "纳指100ETF博时", f18: 2.422, f6: 64897873 }
+    ]
+  }
+};
 
 describe("East Money on-exchange quote parser", () => {
   it("builds East Money market secids from fund code", () => {
@@ -50,6 +58,13 @@ describe("East Money on-exchange quote parser", () => {
 
   it("parses latest official NAV from F10 net-value payload", () => {
     expect(parseEastMoneyNavLatest(navPayload)).toEqual({ navDate: "2026-06-09", unitNav: 1.2 });
+  });
+
+  it("parses spot previous close quotes as a fallback", () => {
+    expect(parseEastMoneySpotQuotes(spotPayload, "2026-06-10")).toEqual([
+      { fundCode: "159513", closePrice: 1.802, tradeDate: "2026-06-09" },
+      { fundCode: "513390", closePrice: 2.422, tradeDate: "2026-06-09" }
+    ]);
   });
 });
 
@@ -119,5 +134,33 @@ describe("East Money on-exchange quote provider", () => {
       turnover: 56000000,
       closingPremiumDiscountRate: null
     });
+  });
+
+  it("falls back to batch spot previous close when historical kline source is unavailable", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(new Response("blocked", { status: 502 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(spotPayload), { status: 200 }));
+    const provider = createEastMoneyOnExchangeQuoteProvider([onExchangeFunds[0]], {
+      fetchImpl,
+      dataDate: "2026-06-10",
+      syncRunId: "run-1"
+    });
+
+    const result = await provider.fetch();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls[1][0]).toContain("push2.eastmoney.com/api/qt/ulist.np/get");
+    expect(result.data[0]).toMatchObject({
+      fundCode: "159513",
+      closePrice: 1.802,
+      tradeDate: "2026-06-09",
+      closingPremiumDiscountRate: null,
+      source: "eastmoney-on-exchange-spot"
+    });
+    expect(result.data[0].turnover).toBeUndefined();
+    expect(result.source).toBe("eastmoney-on-exchange-spot");
   });
 });

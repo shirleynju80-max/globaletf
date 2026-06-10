@@ -3,6 +3,7 @@ import type { Fund, FundQuote } from "../domain/types";
 import type { DataProvider } from "./types";
 
 const SOURCE = "eastmoney-on-exchange-quote";
+const SPOT_SOURCE = "eastmoney-on-exchange-spot";
 
 interface ProviderOptions {
   fetchImpl?: typeof fetch;
@@ -19,6 +20,13 @@ interface KlineLatest {
 interface NavLatest {
   navDate: string;
   unitNav: number;
+}
+
+interface SpotQuote {
+  fundCode: string;
+  closePrice: number;
+  turnover?: number;
+  tradeDate: string;
 }
 
 export function eastMoneySecid(code: string): string {
@@ -49,6 +57,22 @@ export function parseEastMoneyNavLatest(payload: string): NavLatest {
   return { navDate: cells[dateIndex], unitNav };
 }
 
+export function parseEastMoneySpotQuotes(payload: unknown, dataDate: string): SpotQuote[] {
+  const rows = (payload as { data?: { diff?: Array<Record<string, unknown>> } }).data?.diff ?? [];
+  const tradeDate = previousCalendarDate(dataDate);
+
+  return rows.flatMap((row) => {
+    const fundCode = String(row.f12 ?? "");
+    const closePrice = Number(row.f18);
+    if (!fundCode || !Number.isFinite(closePrice)) return [];
+    return [{
+      fundCode,
+      closePrice,
+      tradeDate
+    }];
+  });
+}
+
 export function createEastMoneyOnExchangeQuoteProvider(funds: Fund[], options: ProviderOptions = {}): DataProvider<FundQuote[]> {
   return {
     name: SOURCE,
@@ -58,7 +82,9 @@ export function createEastMoneyOnExchangeQuoteProvider(funds: Fund[], options: P
       const syncRunId = options.syncRunId ?? `eastmoney-quotes-${new Date().toISOString().slice(0, 10)}`;
       const quotes: FundQuote[] = [];
 
-      for (const fund of funds.filter((item) => item.enabled && item.venue === "on_exchange")) {
+      const onExchangeFunds = funds.filter((item) => item.enabled && item.venue === "on_exchange");
+
+      for (const fund of onExchangeFunds) {
         try {
           const kline = await fetchKline(fetchImpl, fund.code, dataDate);
           const nav = await safeFetchNav(fetchImpl, fund.code);
@@ -81,11 +107,37 @@ export function createEastMoneyOnExchangeQuoteProvider(funds: Fund[], options: P
         }
       }
 
+      if (quotes.length === 0) {
+        quotes.push(...await fetchSpotQuotes(fetchImpl, onExchangeFunds, dataDate, syncRunId));
+      }
+
       if (quotes.length === 0) return { ok: false, errorCategory: "missing_fields", message: "No on-exchange quotes fetched" };
       const latestDate = quotes.map((quote) => quote.tradeDate).sort().at(-1) ?? new Date().toISOString().slice(0, 10);
-      return { ok: true, data: quotes, source: SOURCE, dataDate: latestDate, confidence: 0.85 };
+      return { ok: true, data: quotes, source: quotes[0]?.source ?? SOURCE, dataDate: latestDate, confidence: 0.85 };
     }
   };
+}
+
+async function fetchSpotQuotes(fetchImpl: typeof fetch, funds: Fund[], dataDate: string, syncRunId: string): Promise<FundQuote[]> {
+  const params = new URLSearchParams({
+    fltt: "2",
+    secids: funds.map((fund) => eastMoneySecid(fund.code)).join(","),
+    fields: "f12,f14,f6,f18"
+  });
+  const response = await fetchImpl(`https://push2.eastmoney.com/api/qt/ulist.np/get?${params.toString()}`, {
+    headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://fund.eastmoney.com/" }
+  });
+  if (!response.ok) return [];
+
+  return parseEastMoneySpotQuotes(await response.json(), dataDate).map((quote) => ({
+    fundCode: quote.fundCode,
+    closePrice: quote.closePrice,
+    turnover: quote.turnover,
+    tradeDate: quote.tradeDate,
+    closingPremiumDiscountRate: null,
+    source: SPOT_SOURCE,
+    syncRunId
+  }));
 }
 
 async function fetchKline(fetchImpl: typeof fetch, code: string, beforeDate: string): Promise<KlineLatest> {
@@ -129,4 +181,10 @@ function decodeEscapedHtml(value: string): string {
 
 function normalizeText(html: string): string {
   return html.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
+}
+
+function previousCalendarDate(date: string): string {
+  const parsed = new Date(`${date}T00:00:00.000Z`);
+  parsed.setUTCDate(parsed.getUTCDate() - 1);
+  return parsed.toISOString().slice(0, 10);
 }

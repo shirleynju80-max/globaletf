@@ -32,7 +32,7 @@ interface ResolvedOffExchange {
 
 export async function runDailySync(db: Database.Database, options: DailySyncOptions = {}): Promise<void> {
   const fundSnapshot = await resolveFunds(options);
-  const quotes = await resolveQuotes(options, fundSnapshot);
+  const quotes = await resolveQuotes(db, options, fundSnapshot);
   const offExchangeSnapshot = await resolveOffExchangeSnapshot(options, fundSnapshot);
   const holdings = await resolveHoldings(options, fundSnapshot);
 
@@ -75,15 +75,19 @@ async function resolveFunds(options: DailySyncOptions): Promise<ResolvedData<Fun
   }
 }
 
-async function resolveQuotes(options: DailySyncOptions, fundSnapshot: ResolvedData<Fund[]>): Promise<ResolvedData<FundQuote[]>> {
+async function resolveQuotes(db: Database.Database, options: DailySyncOptions, fundSnapshot: ResolvedData<Fund[]>): Promise<ResolvedData<FundQuote[]>> {
   const providers = options.quoteProviders ?? (options.useLiveProviders ? [createEastMoneyOnExchangeQuoteProvider(fundSnapshot.data)] : []);
   if (providers.length === 0) return resolvedOk(mockQuotes, sourceFromQuotes(mockQuotes), latestQuoteDate(mockQuotes), true);
 
   try {
     const result = await runProviderChain(providers);
-    return resolvedOk(result.data, successSource(result.providerResults), latestQuoteDate(result.data) ?? successDataDate(result.providerResults), false);
+    return resolvedOk(result.data, sourceFromQuotes(result.data) ?? successSource(result.providerResults), latestQuoteDate(result.data) ?? successDataDate(result.providerResults), false);
   } catch (error) {
     const failure = providerFailure(error, providers);
+    const cachedQuotes = queryCachedQuotes(db, fundSnapshot.data);
+    if (cachedQuotes.length > 0) {
+      return resolvedFallback(cachedQuotes, "local-cache", latestQuoteDate(cachedQuotes), failure);
+    }
     if (!fundSnapshot.isFallback) return resolvedError([], failure);
     return resolvedFallback(mockQuotes, sourceFromQuotes(mockQuotes), latestQuoteDate(mockQuotes), failure);
   }
@@ -254,4 +258,31 @@ function latestHoldingPeriod(rows: FundHolding[]): string | null {
 
 function latest(values: string[]): string | null {
   return values.filter(Boolean).sort().at(-1) ?? null;
+}
+
+function queryCachedQuotes(db: Database.Database, funds: Fund[]): FundQuote[] {
+  const fundCodes = funds.filter((fund) => fund.enabled && fund.venue === "on_exchange").map((fund) => fund.code);
+  if (fundCodes.length === 0) return [];
+
+  const placeholders = fundCodes.map(() => "?").join(",");
+  return db.prepare(`
+    SELECT
+      fund_code AS fundCode,
+      close_price AS closePrice,
+      closing_premium_discount_rate AS closingPremiumDiscountRate,
+      turnover,
+      trade_date AS tradeDate,
+      source,
+      sync_run_id AS syncRunId
+    FROM fund_quotes q
+    WHERE fund_code IN (${placeholders})
+      AND q.rowid = (
+        SELECT q2.rowid
+        FROM fund_quotes q2
+        WHERE q2.fund_code = q.fund_code
+        ORDER BY q2.trade_date DESC,
+          CASE q2.source WHEN 'eastmoney-on-exchange-quote' THEN 0 WHEN 'eastmoney-on-exchange-spot' THEN 1 WHEN 'eastmoney' THEN 2 ELSE 3 END
+        LIMIT 1
+      )
+  `).all(...fundCodes) as FundQuote[];
 }
