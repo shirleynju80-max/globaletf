@@ -1,10 +1,42 @@
-export function DataStatus() {
+import type { SyncStatusMap, SyncStatusRow } from "../db/repositories";
+
+interface Props {
+  status?: SyncStatusMap | null;
+}
+
+const LABELS: Array<{ key: keyof SyncStatusMap; label: string }> = [
+  { key: "quote", label: "行情" },
+  { key: "purchaseLimit", label: "限购" },
+  { key: "fee", label: "费率" },
+  { key: "holding", label: "持仓" }
+];
+
+export function DataStatus({ status }: Props) {
   return (
     <aside className="status-strip" aria-label="数据状态">
-      <span>行情：上一交易日收盘快照</span>
-      <span>限购：每日同步</span>
-      <span>费率：天天基金优先</span>
-      <span>持仓：基金报告期数据</span>
+      {LABELS.map(({ key, label }) => (
+        <span key={key}>{formatStatus(label, status?.[key])}</span>
+      ))}
     </aside>
   );
+}
+
+function formatStatus(label: string, row?: SyncStatusRow): string {
+  if (!row) return `${label}：暂无状态`;
+
+  const parts = [
+    `${label}：${formatStatusValue(row.status)}`,
+    row.dataDate,
+    row.source,
+    `${row.itemCount}条`,
+    row.message
+  ].filter(Boolean);
+
+  return parts.join(" · ");
+}
+
+function formatStatusValue(status: SyncStatusRow["status"]): string {
+  if (status === "ok") return "正常";
+  if (status === "fallback") return "备用源";
+  return "失败";
 }

@@ -1,7 +1,7 @@
 import express from "express";
 import type Database from "better-sqlite3";
 import { openDatabase } from "../db/database";
-import { queryIndexComparison, queryStockConcentration } from "../db/repositories";
+import { queryIndexComparison, queryStockConcentration, querySyncStatus } from "../db/repositories";
 import { TARGETS } from "../domain/targets";
 
 export function createApp(db: Database.Database) {
@@ -27,12 +27,7 @@ export function createApp(db: Database.Database) {
   });
 
   app.get("/api/status", (_req, res) => {
-    res.json({
-      quote: { status: "ok", lastSuccess: "2026-06-09", source: "eastmoney" },
-      purchaseLimit: { status: "ok", lastSuccess: "2026-06-09", source: "tiantian" },
-      fee: { status: "ok", lastSuccess: "2026-06-09", source: "tiantian" },
-      holding: { status: "ok", lastSuccess: "2026Q1", source: "eastmoney" }
-    });
+    res.json(querySyncStatus(db));
   });
 
   return app;

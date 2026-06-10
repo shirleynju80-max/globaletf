@@ -57,6 +57,22 @@ export interface StockConcentrationRow {
   source: string;
 }
 
+export type SyncStatusArea = "fund" | "quote" | "purchaseLimit" | "fee" | "holding";
+export type SyncStatusValue = "ok" | "fallback" | "error";
+
+export interface SyncStatusRow {
+  area: SyncStatusArea;
+  status: SyncStatusValue;
+  source: string | null;
+  dataDate: string | null;
+  itemCount: number;
+  errorCategory?: string | null;
+  message?: string | null;
+  updatedAt: string;
+}
+
+export type SyncStatusMap = Partial<Record<SyncStatusArea, SyncStatusRow>>;
+
 export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBundle): void {
   const insertFund = db.prepare(`
     INSERT OR REPLACE INTO funds (
@@ -140,6 +156,37 @@ export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBund
   });
 
   tx();
+}
+
+export function recordSyncStatus(db: Database.Database, status: SyncStatusRow): void {
+  db.prepare(`
+    INSERT OR REPLACE INTO sync_status (
+      area, status, source, data_date, item_count, error_category, message, updated_at
+    ) VALUES (
+      @area, @status, @source, @dataDate, @itemCount, @errorCategory, @message, @updatedAt
+    )
+  `).run({
+    ...status,
+    errorCategory: status.errorCategory ?? null,
+    message: status.message ?? null
+  });
+}
+
+export function querySyncStatus(db: Database.Database): SyncStatusMap {
+  const rows = db.prepare(`
+    SELECT
+      area,
+      status,
+      source,
+      data_date AS dataDate,
+      item_count AS itemCount,
+      error_category AS errorCategory,
+      message,
+      updated_at AS updatedAt
+    FROM sync_status
+  `).all() as SyncStatusRow[];
+
+  return Object.fromEntries(rows.map((row) => [row.area, row])) as SyncStatusMap;
 }
 
 function uniqueFeeSnapshotKeys(fees: FeeTier[]): Array<{ fundCode: string; source: string; dataDate: string }> {

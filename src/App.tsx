@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
-import type { StockConcentrationRow } from "./db/repositories";
-import { fetchIndexComparison, fetchStockConcentration } from "./api/client";
+import type { StockConcentrationRow, SyncStatusMap } from "./db/repositories";
+import { fetchIndexComparison, fetchStockConcentration, fetchSyncStatus } from "./api/client";
 import { DataStatus } from "./ui/DataStatus";
 import { IndexComparison } from "./ui/IndexComparison";
 import { StockConcentration } from "./ui/StockConcentration";
 
 export function App() {
   const [data, setData] = useState<{ onExchange: any[]; offExchange: any[] } | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatusMap | null>(null);
   const [selectedStock, setSelectedStock] = useState("NVDA");
   const [stockRows, setStockRows] = useState<StockConcentrationRow[]>([]);
 
@@ -19,6 +20,12 @@ export function App() {
           offExchange: [{ code: "000834", name: "纳指100联接A", shareClass: "A", status: "limited", limitAmountYuan: 1000, channelScope: "agency", source: "mock" }]
         });
       });
+  }, []);
+
+  useEffect(() => {
+    fetchSyncStatus()
+      .then(setSyncStatus)
+      .catch(() => setSyncStatus(null));
   }, []);
 
   useEffect(() => {
@@ -48,7 +55,7 @@ export function App() {
         <h1>境外标的基金成本与限购雷达</h1>
         <p>比较同一标的下的场内折溢价、场外 A/C/F 限额和费率，并查看热门海外股票持仓浓度。</p>
       </header>
-      <DataStatus />
+      <DataStatus status={syncStatus} />
       {data ? <IndexComparison targetName="纳斯达克100" data={data} /> : <p>加载中...</p>}
       <StockConcentration selectedStock={selectedStock} rows={stockRows} onSelectStock={setSelectedStock} />
     </main>

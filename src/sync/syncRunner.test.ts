@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryDatabase } from "../db/database";
-import { queryIndexComparison } from "../db/repositories";
+import { queryIndexComparison, querySyncStatus } from "../db/repositories";
 import type { DataProvider } from "../providers/types";
 import type { OffExchangeFeeLimitSnapshot } from "../providers/eastmoneyF10";
 import type { Fund, FundQuote } from "../domain/types";
@@ -110,6 +110,18 @@ describe("sync runner", () => {
 
     expect(result.offExchange.find((row) => row.code === "000834")?.source).toBe("tiantian");
     expect(result.offExchange.find((row) => row.code === "000834")?.limitAmountYuan).toBe(1000);
+    expect(querySyncStatus(db).purchaseLimit).toMatchObject({
+      status: "fallback",
+      source: "tiantian",
+      errorCategory: "anti_scraping",
+      itemCount: 3
+    });
+    expect(querySyncStatus(db).fee).toMatchObject({
+      status: "fallback",
+      source: "tiantian",
+      errorCategory: "anti_scraping",
+      itemCount: 0
+    });
   });
 
   it("does not attach stale mock limits to a discovered live fund universe", async () => {

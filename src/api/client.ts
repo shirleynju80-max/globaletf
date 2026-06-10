@@ -1,5 +1,5 @@
 import type { Target } from "../domain/types";
-import type { StockConcentrationRow } from "../db/repositories";
+import type { StockConcentrationRow, SyncStatusMap } from "../db/repositories";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8787";
 
@@ -21,7 +21,7 @@ export async function fetchStockConcentration(stockCode: string): Promise<StockC
   return response.json();
 }
 
-export async function fetchSyncStatus(): Promise<Record<string, unknown>> {
+export async function fetchSyncStatus(): Promise<SyncStatusMap> {
   const response = await fetch(`${API_BASE}/api/status`);
   if (!response.ok) throw new Error(`Failed to fetch sync status: ${response.status}`);
   return response.json();

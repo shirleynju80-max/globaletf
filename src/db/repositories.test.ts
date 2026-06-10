@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryDatabase } from "./database";
-import { insertSnapshotBundle, queryIndexComparison, queryStockConcentration } from "./repositories";
+import { insertSnapshotBundle, queryIndexComparison, queryStockConcentration, querySyncStatus, recordSyncStatus } from "./repositories";
 
 describe("repositories", () => {
   it("returns grouped index comparison rows from latest snapshots", () => {
@@ -179,5 +179,42 @@ describe("repositories", () => {
       expect.objectContaining({ fundCode: "000834", fundName: "纳指100联接A", shareClass: "A", navPercent: 10.1, reportPeriod: "2026Q1" }),
       expect.objectContaining({ fundCode: "513100", fundName: "纳指ETF", shareClass: "ETF", navPercent: 9.2, reportPeriod: "2026Q1" })
     ]);
+  });
+
+  it("records sync status by data area", () => {
+    const db = createInMemoryDatabase();
+
+    recordSyncStatus(db, {
+      area: "purchaseLimit",
+      status: "ok",
+      source: "tiantian-f10-jjfl",
+      dataDate: "2026-06-10",
+      itemCount: 33,
+      updatedAt: "2026-06-10T09:30:00.000Z"
+    });
+    recordSyncStatus(db, {
+      area: "quote",
+      status: "error",
+      source: "eastmoney-on-exchange-quote",
+      dataDate: null,
+      itemCount: 0,
+      errorCategory: "anti_scraping",
+      message: "blocked",
+      updatedAt: "2026-06-10T09:31:00.000Z"
+    });
+
+    const status = querySyncStatus(db);
+
+    expect(status.purchaseLimit).toMatchObject({
+      status: "ok",
+      source: "tiantian-f10-jjfl",
+      dataDate: "2026-06-10",
+      itemCount: 33
+    });
+    expect(status.quote).toMatchObject({
+      status: "error",
+      errorCategory: "anti_scraping",
+      message: "blocked"
+    });
   });
 });

@@ -64,6 +64,17 @@ export function migrate(db: Database.Database): void {
       sync_run_id TEXT NOT NULL,
       PRIMARY KEY (fund_code, stock_code, report_period, source)
     );
+
+    CREATE TABLE IF NOT EXISTS sync_status (
+      area TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      source TEXT,
+      data_date TEXT,
+      item_count INTEGER NOT NULL,
+      error_category TEXT,
+      message TEXT,
+      updated_at TEXT NOT NULL
+    );
   `);
 
   relaxLegacyQuotePremiumConstraint(db);
