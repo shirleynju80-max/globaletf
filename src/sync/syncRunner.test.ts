@@ -3,7 +3,7 @@ import { createInMemoryDatabase } from "../db/database";
 import { queryIndexComparison } from "../db/repositories";
 import type { DataProvider } from "../providers/types";
 import type { OffExchangeFeeLimitSnapshot } from "../providers/eastmoneyF10";
-import type { Fund } from "../domain/types";
+import type { Fund, FundQuote } from "../domain/types";
 import { runDailySync } from "./syncRunner";
 
 describe("sync runner", () => {
@@ -77,6 +77,25 @@ describe("sync runner", () => {
       ["016533", "C", 100],
       ["021778", "F", 10000]
     ]);
+  });
+
+  it("uses on-exchange quote provider data when available", async () => {
+    const db = createInMemoryDatabase();
+    const provider: DataProvider<FundQuote[]> = {
+      name: "test-quotes",
+      fetch: async () => ({
+        ok: true,
+        source: "test-quotes",
+        dataDate: "2026-06-09",
+        confidence: 0.85,
+        data: [{ fundCode: "513100", closePrice: 1.3, closingPremiumDiscountRate: 0.02, turnover: 90000000, tradeDate: "2026-06-09", source: "test-quotes", syncRunId: "run-1" }]
+      })
+    };
+
+    await runDailySync(db, { quoteProviders: [provider] });
+    const result = queryIndexComparison(db, "NASDAQ_100");
+
+    expect(result.onExchange[0]).toMatchObject({ code: "513100", closePrice: 1.3, closingPremiumDiscountRate: 0.02, source: "test-quotes" });
   });
 
   it("falls back to mock off-exchange snapshots when live providers fail", async () => {

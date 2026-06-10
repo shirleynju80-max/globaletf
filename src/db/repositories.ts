@@ -131,7 +131,7 @@ export function queryIndexComparison(db: Database.Database, targetCode: string):
       FROM fund_quotes q2
       WHERE q2.fund_code = f.code
       ORDER BY q2.trade_date DESC,
-        CASE q2.source WHEN 'eastmoney' THEN 0 ELSE 1 END
+        CASE q2.source WHEN 'eastmoney-on-exchange-quote' THEN 0 WHEN 'eastmoney' THEN 1 ELSE 2 END
       LIMIT 1
     )
     LEFT JOIN purchase_limits l ON l.rowid = (

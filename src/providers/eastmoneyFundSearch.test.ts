@@ -4,6 +4,7 @@ import { createEastMoneyFundSearchProvider, parseEastMoneyFundSearch, selectFund
 const sampleScript = `var r = [
   ["000834","DCNSDK100ETFLJQDIIA","大成纳斯达克100ETF联接(QDII)A","指数型-海外股票","DACHENG"],
   ["008971","DCNSDK100ETFLJQDIIC","大成纳斯达克100ETF联接(QDII)C","指数型-海外股票","DACHENG"],
+  ["012870","YFDNSDK100ETFLJQDIILOFCRMB","易方达纳斯达克100ETF联接(QDII-LOF)C(人民币)","指数型-海外股票","YIFANGDA"],
   ["021778","GFNZ100ETFLJQDIIRMBF","广发纳指100ETF联接(QDII)人民币F","指数型-海外股票","GUANGFA"],
   ["016532","JSNSDK100ETFFQLJQDIIARMB","嘉实纳斯达克100ETF发起联接(QDII)A人民币","指数型-海外股票","JIASHI"],
   ["016533","JSNSDK100ETFFQLJQDIICRMB","嘉实纳斯达克100ETF发起联接(QDII)C人民币","指数型-海外股票","JIASHI"],
@@ -36,6 +37,7 @@ describe("East Money fund search parser", () => {
     expect(funds.map((fund) => [fund.code, fund.shareClass, fund.venue])).toEqual([
       ["000834", "A", "off_exchange"],
       ["008971", "C", "off_exchange"],
+      ["012870", "C", "off_exchange"],
       ["016532", "A", "off_exchange"],
       ["016533", "C", "off_exchange"],
       ["021778", "F", "off_exchange"],

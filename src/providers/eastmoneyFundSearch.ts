@@ -86,11 +86,11 @@ function toFund(row: FundSearchRow, targetCode: string): Fund | undefined {
 
 function inferShareClass(row: FundSearchRow): ShareClass {
   if (/^\d{6}$/.test(row.code) && (row.code.startsWith("15") || row.code.startsWith("51"))) return "ETF";
-  if (/LOF|上市开放式|^\d{3}213$/.test(row.name) || row.code.startsWith("16")) return "LOF";
+  if (row.code.startsWith("16")) return "LOF";
   const normalizedName = row.name.replace(/[（）]/g, (char) => (char === "（" ? "(" : ")"));
-  if (/[（(]?A(?:人民币)?[）)]?$/.test(normalizedName)) return "A";
-  if (/[（(]?C(?:人民币)?[）)]?$/.test(normalizedName)) return "C";
-  if (/[（(]?F(?:人民币)?[）)]?$/.test(normalizedName)) return "F";
+  if (/[（(]?A(?:人民币|\(人民币\))?[）)]?$/.test(normalizedName)) return "A";
+  if (/[（(]?C(?:人民币|\(人民币\))?[）)]?$/.test(normalizedName)) return "C";
+  if (/[（(]?F(?:人民币|\(人民币\))?[）)]?$/.test(normalizedName)) return "F";
   return "UNKNOWN";
 }
 

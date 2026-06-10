@@ -44,6 +44,27 @@ describe("repositories", () => {
     expect(result.onExchange[0].closingPremiumDiscountRate).toBeNull();
   });
 
+  it("prefers live on-exchange quotes over older mock quotes", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "513100", name: "纳指ETF", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true }
+      ],
+      quotes: [
+        { fundCode: "513100", closePrice: 1.23, closingPremiumDiscountRate: 0.012, turnover: 120000000, tradeDate: "2026-06-08", source: "eastmoney", syncRunId: "run-1" },
+        { fundCode: "513100", closePrice: 1.3, closingPremiumDiscountRate: null, turnover: 90000000, tradeDate: "2026-06-09", source: "eastmoney-on-exchange-quote", syncRunId: "run-2" }
+      ],
+      limits: [],
+      fees: [],
+      holdings: []
+    });
+
+    const result = queryIndexComparison(db, "NASDAQ_100");
+
+    expect(result.onExchange[0]).toMatchObject({ closePrice: 1.3, source: "eastmoney-on-exchange-quote" });
+  });
+
   it("prefers the latest F10 purchase limit snapshot over older fallback data", () => {
     const db = createInMemoryDatabase();
     insertSnapshotBundle(db, {
