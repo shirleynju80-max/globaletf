@@ -94,4 +94,28 @@ describe("East Money F10 provider", () => {
     expect(result.data.limits).toHaveLength(1);
     expect(result.data.fees.length).toBeGreaterThan(0);
   });
+
+  it("keeps successful fund results when one F10 page fails", async () => {
+    const fetchImpl = vi
+      .fn()
+      .mockResolvedValueOnce(new Response(sampleHtml, { status: 200 }))
+      .mockResolvedValueOnce(new Response("blocked", { status: 403 }));
+    const provider = createEastMoneyF10OffExchangeProvider(
+      [
+        baseFund,
+        { ...baseFund, code: "016533", name: "嘉实纳斯达克100ETF发起联接(QDII)C人民币", shareClass: "C" }
+      ],
+      {
+        fetchImpl,
+        dataDate: "2026-06-09",
+        syncRunId: "run-1"
+      }
+    );
+
+    const result = await provider.fetch();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.limits.map((limit) => limit.fundCode)).toEqual(["000834"]);
+  });
 });

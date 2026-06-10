@@ -88,4 +88,32 @@ describe("repositories", () => {
     const rows = db.prepare("SELECT rate FROM fund_fees WHERE fund_code = '000834'").all() as Array<{ rate: number }>;
     expect(rows).toEqual([{ rate: 0.001 }]);
   });
+
+  it("disables stale funds for targets included in a new snapshot", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "020123", name: "旧纳指F", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "F", enabled: true }
+      ],
+      quotes: [],
+      limits: [{ fundCode: "020123", shareClass: "F", status: "limited", limitAmountYuan: 10000, limitUnit: "per_day", channelScope: "direct", source: "tiantian", dataDate: "2026-06-09", confidence: 0.8, syncRunId: "run-1" }],
+      fees: [],
+      holdings: []
+    });
+    insertSnapshotBundle(db, {
+      syncRunId: "run-2",
+      funds: [
+        { code: "021778", name: "广发纳指100ETF联接(QDII)人民币F", fundType: "指数型-海外股票", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "F", enabled: true }
+      ],
+      quotes: [],
+      limits: [{ fundCode: "021778", shareClass: "F", status: "limited", limitAmountYuan: 10000, limitUnit: "per_day", channelScope: "direct", source: "tiantian-f10-jjfl", dataDate: "2026-06-09", confidence: 0.9, syncRunId: "run-2" }],
+      fees: [],
+      holdings: []
+    });
+
+    const result = queryIndexComparison(db, "NASDAQ_100");
+
+    expect(result.offExchange.map((row) => row.code)).toEqual(["021778"]);
+  });
 });

@@ -33,6 +33,7 @@ export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBund
       @code, @name, @fundType, @venue, @fundCompany, @trackingTargetCode, @shareClass, @parentFundCode, @enabled
     )
   `);
+  const disableFundsForTarget = db.prepare("UPDATE funds SET enabled = 0 WHERE tracking_target_code = ?");
   const insertQuote = db.prepare(`
     INSERT OR REPLACE INTO fund_quotes (
       fund_code, close_price, closing_premium_discount_rate, turnover, trade_date, source, sync_run_id
@@ -59,6 +60,9 @@ export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBund
   const deleteFeeSnapshot = db.prepare("DELETE FROM fund_fees WHERE fund_code = ? AND source = ? AND data_date = ?");
 
   const tx = db.transaction(() => {
+    for (const targetCode of uniqueSnapshotTargets(bundle.funds)) {
+      disableFundsForTarget.run(targetCode);
+    }
     for (const fund of bundle.funds) {
       insertFund.run({
         ...fund,
@@ -100,6 +104,10 @@ function uniqueFeeSnapshotKeys(fees: FeeTier[]): Array<{ fundCode: string; sourc
     keys.set(key, { fundCode: fee.fundCode, source: fee.source, dataDate: fee.dataDate });
   }
   return [...keys.values()];
+}
+
+function uniqueSnapshotTargets(funds: Fund[]): string[] {
+  return [...new Set(funds.flatMap((fund) => (fund.trackingTargetCode ? [fund.trackingTargetCode] : [])))];
 }
 
 export function queryIndexComparison(db: Database.Database, targetCode: string): { onExchange: IndexComparisonRow[]; offExchange: IndexComparisonRow[] } {

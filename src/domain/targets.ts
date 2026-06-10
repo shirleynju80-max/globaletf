@@ -18,9 +18,13 @@ export const STOCK_TARGETS: Target[] = [
 export const TARGETS = [...INDEX_TARGETS, ...STOCK_TARGETS].sort((a, b) => a.displayOrder - b.displayOrder);
 
 export function findTargetByCode(input: string): Target | undefined {
-  const normalized = input.trim().toLowerCase().replace(/\s+/g, "");
+  const normalized = normalizeTargetLookup(input);
   return TARGETS.find((target) => {
-    if (target.code.toLowerCase().replace(/_/g, "") === normalized) return true;
-    return target.aliases.some((alias) => alias.toLowerCase().replace(/\s+/g, "") === normalized);
+    if (normalizeTargetLookup(target.code) === normalized) return true;
+    return target.aliases.some((alias) => normalizeTargetLookup(alias) === normalized);
   });
+}
+
+function normalizeTargetLookup(value: string): string {
+  return value.trim().toLowerCase().replace(/[\s_]+/g, "");
 }

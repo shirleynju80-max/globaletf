@@ -64,19 +64,21 @@ export function createEastMoneyF10OffExchangeProvider(funds: Fund[], options: Pr
       try {
         for (const fund of funds.filter((item) => item.enabled && item.venue === "off_exchange")) {
           const url = `https://fundf10.eastmoney.com/jjfl_${fund.code}.html`;
-          const response = await fetchImpl(url, {
-            headers: {
-              "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
-              Referer: "https://fund.eastmoney.com/"
-            }
-          });
-          if (!response.ok) {
-            return { ok: false, errorCategory: "http", message: `${url} returned ${response.status}` };
-          }
+          try {
+            const response = await fetchImpl(url, {
+              headers: {
+                "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
+                Referer: "https://fund.eastmoney.com/"
+              }
+            });
+            if (!response.ok) continue;
 
-          const parsed = parseEastMoneyF10FeesAndLimits({ fund, html: await response.text(), dataDate, syncRunId });
-          limits.push(parsed.limit);
-          fees.push(...parsed.fees);
+            const parsed = parseEastMoneyF10FeesAndLimits({ fund, html: await response.text(), dataDate, syncRunId });
+            limits.push(parsed.limit);
+            fees.push(...parsed.fees);
+          } catch {
+            continue;
+          }
         }
 
         if (limits.length === 0) return { ok: false, errorCategory: "missing_fields", message: "No enabled off-exchange funds to fetch" };

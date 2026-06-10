@@ -13,6 +13,7 @@ describe("targets", () => {
   });
 
   it("finds targets by code and alias", () => {
+    expect(findTargetByCode("NASDAQ_100")?.code).toBe("NASDAQ_100");
     expect(findTargetByCode("nasdaq100")?.code).toBe("NASDAQ_100");
     expect(findTargetByCode("英伟达")?.code).toBe("NVDA");
   });
