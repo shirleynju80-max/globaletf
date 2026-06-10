@@ -98,6 +98,62 @@ describe("sync runner", () => {
     expect(result.onExchange[0]).toMatchObject({ code: "513100", closePrice: 1.3, closingPremiumDiscountRate: 0.02, source: "test-quotes" });
   });
 
+  it("uses cached quotes for on-exchange funds not refreshed by the provider", async () => {
+    const db = createInMemoryDatabase();
+    const funds: Fund[] = [
+      { code: "159513", name: "纳斯达克100ETF大成", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true },
+      { code: "513390", name: "纳指100ETF博时", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true }
+    ];
+    const fundProvider: DataProvider<Fund[]> = {
+      name: "test-funds",
+      fetch: async () => ({ ok: true, source: "test-funds", dataDate: "2026-06-10", confidence: 0.9, data: funds })
+    };
+    const firstQuoteProvider: DataProvider<FundQuote[]> = {
+      name: "initial-quotes",
+      fetch: async () => ({
+        ok: true,
+        source: "initial-quotes",
+        dataDate: "2026-06-08",
+        confidence: 0.8,
+        data: [
+          { fundCode: "159513", closePrice: 1.7, closingPremiumDiscountRate: null, turnover: 100, tradeDate: "2026-06-08", source: "initial-quotes", syncRunId: "run-1" },
+          { fundCode: "513390", closePrice: 2.3, closingPremiumDiscountRate: null, turnover: 200, tradeDate: "2026-06-08", source: "initial-quotes", syncRunId: "run-1" }
+        ]
+      })
+    };
+    await runDailySync(db, { fundProviders: [fundProvider], quoteProviders: [firstQuoteProvider] });
+
+    const partialQuoteProvider: DataProvider<FundQuote[]> = {
+      name: "partial-quotes",
+      fetch: async () => ({
+        ok: true,
+        source: "partial-quotes",
+        dataDate: "2026-06-09",
+        confidence: 0.8,
+        data: [
+          { fundCode: "159513", closePrice: 1.8, closingPremiumDiscountRate: null, turnover: 300, tradeDate: "2026-06-09", source: "partial-quotes", syncRunId: "run-2" }
+        ]
+      })
+    };
+
+    await runDailySync(db, { fundProviders: [fundProvider], quoteProviders: [partialQuoteProvider] });
+    const result = queryIndexComparison(db, "NASDAQ_100").onExchange;
+    const status = querySyncStatus(db).quote;
+
+    expect(result.map((row) => [row.code, row.closePrice, row.source])).toEqual([
+      ["159513", 1.8, "partial-quotes"],
+      ["513390", 2.3, "initial-quotes"]
+    ]);
+    expect(status).toMatchObject({
+      status: "fallback",
+      source: "partial-quotes+local-cache",
+      dataDate: "2026-06-09",
+      itemCount: 2,
+      freshItemCount: 1,
+      cachedItemCount: 1
+    });
+  });
+
   it("falls back to the latest cached quotes when quote providers fail", async () => {
     const db = createInMemoryDatabase();
     await runDailySync(db);

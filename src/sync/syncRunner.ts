@@ -81,12 +81,23 @@ async function resolveQuotes(db: Database.Database, options: DailySyncOptions, f
 
   try {
     const result = await runProviderChain(providers);
-    return resolvedOk(result.data, sourceFromQuotes(result.data) ?? successSource(result.providerResults), latestQuoteDate(result.data) ?? successDataDate(result.providerResults), false);
+    const cachedQuotes = queryCachedQuotes(db, fundSnapshot.data, new Set(result.data.map((quote) => quote.fundCode)));
+    if (cachedQuotes.length > 0) {
+      return resolvedFallback(
+        [...result.data, ...cachedQuotes],
+        `${sourceFromQuotes(result.data) ?? successSource(result.providerResults)}+local-cache`,
+        latestQuoteDate(result.data) ?? successDataDate(result.providerResults),
+        { source: null, errorCategory: null, message: null },
+        result.data.length,
+        cachedQuotes.length
+      );
+    }
+    return resolvedOk(result.data, sourceFromQuotes(result.data) ?? successSource(result.providerResults), latestQuoteDate(result.data) ?? successDataDate(result.providerResults), false, result.data.length, 0);
   } catch (error) {
     const failure = providerFailure(error, providers);
     const cachedQuotes = queryCachedQuotes(db, fundSnapshot.data);
     if (cachedQuotes.length > 0) {
-      return resolvedFallback(cachedQuotes, "local-cache", latestQuoteDate(cachedQuotes), failure);
+      return resolvedFallback(cachedQuotes, "local-cache", latestQuoteDate(cachedQuotes), failure, 0, cachedQuotes.length);
     }
     if (!fundSnapshot.isFallback) return resolvedError([], failure);
     return resolvedFallback(mockQuotes, sourceFromQuotes(mockQuotes), latestQuoteDate(mockQuotes), failure);
@@ -121,15 +132,15 @@ async function resolveHoldings(options: DailySyncOptions, fundSnapshot: Resolved
   }
 }
 
-function resolvedOk<T>(data: T[], source: string | null, dataDate: string | null, isFallback: boolean): ResolvedData<T[]> {
+function resolvedOk<T>(data: T[], source: string | null, dataDate: string | null, isFallback: boolean, freshItemCount?: number, cachedItemCount?: number): ResolvedData<T[]> {
   return {
     data,
     isFallback,
-    status: { status: "ok", source, dataDate, itemCount: data.length }
+    status: { status: "ok", source, dataDate, itemCount: data.length, freshItemCount, cachedItemCount }
   };
 }
 
-function resolvedFallback<T>(data: T[], source: string | null, dataDate: string | null, failure: ProviderFailure): ResolvedData<T[]> {
+function resolvedFallback<T>(data: T[], source: string | null, dataDate: string | null, failure: ProviderFailure, freshItemCount?: number, cachedItemCount?: number): ResolvedData<T[]> {
   return {
     data,
     isFallback: true,
@@ -138,6 +149,8 @@ function resolvedFallback<T>(data: T[], source: string | null, dataDate: string 
       source,
       dataDate,
       itemCount: data.length,
+      freshItemCount,
+      cachedItemCount,
       errorCategory: failure.errorCategory,
       message: failure.message
     }
@@ -260,8 +273,10 @@ function latest(values: string[]): string | null {
   return values.filter(Boolean).sort().at(-1) ?? null;
 }
 
-function queryCachedQuotes(db: Database.Database, funds: Fund[]): FundQuote[] {
-  const fundCodes = funds.filter((fund) => fund.enabled && fund.venue === "on_exchange").map((fund) => fund.code);
+function queryCachedQuotes(db: Database.Database, funds: Fund[], excludeFundCodes = new Set<string>()): FundQuote[] {
+  const fundCodes = funds
+    .filter((fund) => fund.enabled && fund.venue === "on_exchange" && !excludeFundCodes.has(fund.code))
+    .map((fund) => fund.code);
   if (fundCodes.length === 0) return [];
 
   const placeholders = fundCodes.map(() => "?").join(",");

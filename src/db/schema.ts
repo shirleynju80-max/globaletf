@@ -71,6 +71,8 @@ export function migrate(db: Database.Database): void {
       source TEXT,
       data_date TEXT,
       item_count INTEGER NOT NULL,
+      fresh_item_count INTEGER,
+      cached_item_count INTEGER,
       error_category TEXT,
       message TEXT,
       updated_at TEXT NOT NULL
@@ -78,6 +80,7 @@ export function migrate(db: Database.Database): void {
   `);
 
   relaxLegacyQuotePremiumConstraint(db);
+  addSyncStatusCountColumns(db);
 }
 
 function relaxLegacyQuotePremiumConstraint(db: Database.Database): void {
@@ -108,4 +111,16 @@ function relaxLegacyQuotePremiumConstraint(db: Database.Database): void {
 
     DROP TABLE fund_quotes_legacy_notnull;
   `);
+}
+
+function addSyncStatusCountColumns(db: Database.Database): void {
+  const columns = db.prepare("PRAGMA table_info(sync_status)").all() as Array<{ name: string }>;
+  const names = new Set(columns.map((column) => column.name));
+
+  if (!names.has("fresh_item_count")) {
+    db.exec("ALTER TABLE sync_status ADD COLUMN fresh_item_count INTEGER");
+  }
+  if (!names.has("cached_item_count")) {
+    db.exec("ALTER TABLE sync_status ADD COLUMN cached_item_count INTEGER");
+  }
 }

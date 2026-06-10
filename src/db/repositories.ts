@@ -66,6 +66,8 @@ export interface SyncStatusRow {
   source: string | null;
   dataDate: string | null;
   itemCount: number;
+  freshItemCount?: number | null;
+  cachedItemCount?: number | null;
   errorCategory?: string | null;
   message?: string | null;
   updatedAt: string;
@@ -161,12 +163,14 @@ export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBund
 export function recordSyncStatus(db: Database.Database, status: SyncStatusRow): void {
   db.prepare(`
     INSERT OR REPLACE INTO sync_status (
-      area, status, source, data_date, item_count, error_category, message, updated_at
+      area, status, source, data_date, item_count, fresh_item_count, cached_item_count, error_category, message, updated_at
     ) VALUES (
-      @area, @status, @source, @dataDate, @itemCount, @errorCategory, @message, @updatedAt
+      @area, @status, @source, @dataDate, @itemCount, @freshItemCount, @cachedItemCount, @errorCategory, @message, @updatedAt
     )
   `).run({
     ...status,
+    freshItemCount: status.freshItemCount ?? null,
+    cachedItemCount: status.cachedItemCount ?? null,
     errorCategory: status.errorCategory ?? null,
     message: status.message ?? null
   });
@@ -180,6 +184,8 @@ export function querySyncStatus(db: Database.Database): SyncStatusMap {
       source,
       data_date AS dataDate,
       item_count AS itemCount,
+      fresh_item_count AS freshItemCount,
+      cached_item_count AS cachedItemCount,
       error_category AS errorCategory,
       message,
       updated_at AS updatedAt

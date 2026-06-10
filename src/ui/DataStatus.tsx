@@ -29,6 +29,8 @@ function formatStatus(label: string, row?: SyncStatusRow): string {
     row.dataDate,
     row.source,
     `${row.itemCount}条`,
+    row.freshItemCount == null ? null : `刷新${row.freshItemCount}条`,
+    row.cachedItemCount == null ? null : `缓存${row.cachedItemCount}条`,
     row.message
   ].filter(Boolean);
 

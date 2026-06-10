@@ -190,6 +190,8 @@ describe("repositories", () => {
       source: "tiantian-f10-jjfl",
       dataDate: "2026-06-10",
       itemCount: 33,
+      freshItemCount: 30,
+      cachedItemCount: 3,
       updatedAt: "2026-06-10T09:30:00.000Z"
     });
     recordSyncStatus(db, {
@@ -209,7 +211,9 @@ describe("repositories", () => {
       status: "ok",
       source: "tiantian-f10-jjfl",
       dataDate: "2026-06-10",
-      itemCount: 33
+      itemCount: 33,
+      freshItemCount: 30,
+      cachedItemCount: 3
     });
     expect(status.quote).toMatchObject({
       status: "error",
