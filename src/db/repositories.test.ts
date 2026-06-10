@@ -13,7 +13,15 @@ describe("repositories", () => {
       ],
       quotes: [{ fundCode: "513100", closePrice: 1.23, closingPremiumDiscountRate: 0.012, turnover: 120000000, tradeDate: "2026-06-08", source: "eastmoney", syncRunId: "run-1" }],
       limits: [{ fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "tiantian", dataDate: "2026-06-09", confidence: 0.9, syncRunId: "run-1" }],
-      fees: [{ fundCode: "000834", feeType: "subscription", rate: 0.0012, amountTierLowerBound: 0, amountTierUpperBound: 500000, channelScope: "agency", source: "tiantian", dataDate: "2026-06-09", syncRunId: "run-1" }],
+      fees: [
+        { fundCode: "000834", feeType: "subscription", rate: 0.0012, amountTierLowerBound: 0, amountTierUpperBound: 500000, channelScope: "agency", source: "tiantian", dataDate: "2026-06-09", syncRunId: "run-1" },
+        { fundCode: "000834", feeType: "subscription", rate: 0.001, amountTierLowerBound: 500000, amountTierUpperBound: 2000000, channelScope: "agency", source: "tiantian", dataDate: "2026-06-09", syncRunId: "run-1" },
+        { fundCode: "000834", feeType: "redemption", rate: 0.015, minHoldingDays: 0, maxHoldingDays: 6, channelScope: "agency", source: "tiantian", dataDate: "2026-06-09", syncRunId: "run-1" },
+        { fundCode: "000834", feeType: "redemption", rate: 0.005, minHoldingDays: 7, maxHoldingDays: 29, channelScope: "agency", source: "tiantian", dataDate: "2026-06-09", syncRunId: "run-1" },
+        { fundCode: "000834", feeType: "management", rate: 0.008, channelScope: "agency", source: "tiantian", dataDate: "2026-06-09", syncRunId: "run-1" },
+        { fundCode: "000834", feeType: "custodian", rate: 0.002, channelScope: "agency", source: "tiantian", dataDate: "2026-06-09", syncRunId: "run-1" },
+        { fundCode: "000834", feeType: "sales_service", rate: 0, channelScope: "agency", source: "tiantian", dataDate: "2026-06-09", syncRunId: "run-1" }
+      ],
       holdings: []
     });
 
@@ -23,7 +31,14 @@ describe("repositories", () => {
     expect(result.onExchange).toHaveLength(1);
     expect(result.offExchange).toHaveLength(1);
     expect(result.offExchange[0].limitAmountYuan).toBe(1000);
-    expect(feeCount.count).toBe(1);
+    expect(feeCount.count).toBe(7);
+    expect(result.offExchange[0]).toMatchObject({
+      defaultSubscriptionRate: 0.0012,
+      managementRate: 0.008,
+      custodianRate: 0.002,
+      salesServiceRate: 0,
+      redemptionFeeSummary: "0-6天: 1.50%; 7-29天: 0.50%"
+    });
   });
 
   it("keeps closing premium empty when same-date NAV is unavailable", () => {

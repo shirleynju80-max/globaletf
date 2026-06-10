@@ -57,6 +57,9 @@ export function IndexComparison({ targetName, data }: Props) {
               <th>份额</th>
               <th>申购状态</th>
               <th>限额</th>
+              <th>申购费</th>
+              <th>赎回费</th>
+              <th>运作费(管/托/销)</th>
               <th>渠道范围</th>
               <th>来源</th>
             </tr>
@@ -69,6 +72,9 @@ export function IndexComparison({ targetName, data }: Props) {
                 <td>{row.shareClass}</td>
                 <td>{formatStatus(row.status)}</td>
                 <td>{formatCurrency(row.limitAmountYuan)}</td>
+                <td>{formatOptionalPercent(row.defaultSubscriptionRate)}</td>
+                <td>{row.redemptionFeeSummary ?? "-"}</td>
+                <td>{formatOperationFees(row)}</td>
                 <td>{formatChannelScope(row.channelScope)}</td>
                 <td>{row.source}</td>
               </tr>
@@ -92,6 +98,20 @@ function formatStatus(status?: string): string {
   if (status === "open") return "开放";
   if (status === "suspended") return "暂停";
   return "未知";
+}
+
+function formatOptionalPercent(value?: number | null): string {
+  return value == null ? "-" : formatPercent(value);
+}
+
+function formatOperationFees(row: {
+  managementRate?: number | null;
+  custodianRate?: number | null;
+  salesServiceRate?: number | null;
+}): string {
+  const rates = [row.managementRate, row.custodianRate, row.salesServiceRate];
+  if (rates.every((rate) => rate == null)) return "-";
+  return rates.map((rate) => formatOptionalPercent(rate)).join(" / ");
 }
 
 function formatChannelScope(scope?: string): string {

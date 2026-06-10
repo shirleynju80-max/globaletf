@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
-import type { FeeTier, Fund, FundHolding, FundQuote, PurchaseLimit } from "../domain/types";
+import { formatPercent } from "../domain/fees";
+import type { FeeTier, FeeType, Fund, FundHolding, FundQuote, PurchaseLimit } from "../domain/types";
 
 export interface SnapshotBundle {
   syncRunId: string;
@@ -23,6 +24,23 @@ interface IndexComparisonRow {
   limitAmountYuan?: number;
   channelScope?: string;
   source?: string;
+  defaultSubscriptionRate?: number | null;
+  managementRate?: number | null;
+  custodianRate?: number | null;
+  salesServiceRate?: number | null;
+  redemptionFeeSummary?: string | null;
+}
+
+interface FeeRow {
+  fundCode: string;
+  feeType: FeeType;
+  rate: number;
+  minHoldingDays: number | null;
+  maxHoldingDays: number | null;
+  amountTierLowerBound: number | null;
+  amountTierUpperBound: number | null;
+  source: string;
+  dataDate: string;
 }
 
 export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBundle): void {
@@ -145,9 +163,101 @@ export function queryIndexComparison(db: Database.Database, targetCode: string):
     )
     WHERE f.tracking_target_code = ? AND f.enabled = 1
   `).all(targetCode) as IndexComparisonRow[];
+  enrichRowsWithFees(db, rows);
 
   return {
     onExchange: rows.filter((row) => row.venue === "on_exchange"),
     offExchange: rows.filter((row) => row.venue === "off_exchange")
   };
+}
+
+function enrichRowsWithFees(db: Database.Database, rows: IndexComparisonRow[]): void {
+  const fundCodes = rows.filter((row) => row.venue === "off_exchange").map((row) => row.code);
+  if (fundCodes.length === 0) return;
+
+  const placeholders = fundCodes.map(() => "?").join(",");
+  const fees = db.prepare(`
+    SELECT
+      fund_code AS fundCode,
+      fee_type AS feeType,
+      rate,
+      min_holding_days AS minHoldingDays,
+      max_holding_days AS maxHoldingDays,
+      amount_tier_lower_bound AS amountTierLowerBound,
+      amount_tier_upper_bound AS amountTierUpperBound,
+      source,
+      data_date AS dataDate
+    FROM fund_fees
+    WHERE fund_code IN (${placeholders})
+    ORDER BY
+      fund_code,
+      data_date DESC,
+      CASE source WHEN 'tiantian-f10-jjfl' THEN 0 WHEN 'tiantian' THEN 1 ELSE 2 END,
+      amount_tier_lower_bound,
+      min_holding_days
+  `).all(...fundCodes) as FeeRow[];
+
+  const feesByFund = new Map<string, FeeRow[]>();
+  for (const fee of fees) {
+    const existing = feesByFund.get(fee.fundCode) ?? [];
+    existing.push(fee);
+    feesByFund.set(fee.fundCode, existing);
+  }
+
+  for (const row of rows) {
+    if (row.venue !== "off_exchange") continue;
+    const fundFees = feesByFund.get(row.code) ?? [];
+    row.defaultSubscriptionRate = selectDefaultSubscriptionRate(fundFees);
+    row.managementRate = selectSingleRate(fundFees, "management");
+    row.custodianRate = selectSingleRate(fundFees, "custodian");
+    row.salesServiceRate = selectSingleRate(fundFees, "sales_service");
+    row.redemptionFeeSummary = summarizeRedemptionFees(fundFees);
+  }
+}
+
+function selectDefaultSubscriptionRate(fees: FeeRow[]): number | null {
+  return selectPreferredSnapshot(fees, "subscription").sort(
+    (a, b) => (a.amountTierLowerBound ?? 0) - (b.amountTierLowerBound ?? 0)
+  )[0]?.rate ?? null;
+}
+
+function selectSingleRate(fees: FeeRow[], feeType: FeeType): number | null {
+  return selectPreferredSnapshot(fees, feeType)[0]?.rate ?? null;
+}
+
+function summarizeRedemptionFees(fees: FeeRow[]): string | null {
+  const tiers = selectPreferredSnapshot(fees, "redemption").sort(
+    (a, b) => (a.minHoldingDays ?? 0) - (b.minHoldingDays ?? 0)
+  );
+  if (tiers.length === 0) return null;
+
+  return tiers
+    .map((tier) => `${formatHoldingRange(tier)}: ${formatPercent(tier.rate)}`)
+    .join("; ");
+}
+
+function selectPreferredSnapshot(fees: FeeRow[], feeType: FeeType): FeeRow[] {
+  const matching = fees.filter((fee) => fee.feeType === feeType);
+  const best = matching.sort(compareFeeSnapshot)[0];
+  if (!best) return [];
+
+  return matching.filter((fee) => fee.dataDate === best.dataDate && fee.source === best.source);
+}
+
+function compareFeeSnapshot(a: FeeRow, b: FeeRow): number {
+  const dateCompare = b.dataDate.localeCompare(a.dataDate);
+  if (dateCompare !== 0) return dateCompare;
+  return sourcePriority(a.source) - sourcePriority(b.source);
+}
+
+function sourcePriority(source: string): number {
+  if (source === "tiantian-f10-jjfl") return 0;
+  if (source === "tiantian") return 1;
+  return 2;
+}
+
+function formatHoldingRange(tier: FeeRow): string {
+  const min = tier.minHoldingDays ?? 0;
+  if (tier.maxHoldingDays == null) return `${min}天以上`;
+  return `${min}-${tier.maxHoldingDays}天`;
 }

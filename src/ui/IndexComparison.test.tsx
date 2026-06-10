@@ -31,4 +31,34 @@ describe("IndexComparison", () => {
 
     expect(screen.getByText("同日净值缺失")).toBeInTheDocument();
   });
+
+  it("shows off-exchange fee cost columns", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [],
+          offExchange: [{
+            code: "000834",
+            name: "纳指100联接A",
+            shareClass: "A",
+            status: "limited",
+            limitAmountYuan: 10,
+            channelScope: "agency",
+            defaultSubscriptionRate: 0.0012,
+            redemptionFeeSummary: "0-6天: 1.50%; 7-29天: 0.50%",
+            managementRate: 0.008,
+            custodianRate: 0.002,
+            salesServiceRate: 0,
+            source: "tiantian-f10-jjfl"
+          }]
+        }}
+      />
+    );
+
+    expect(screen.getByText("申购费")).toBeInTheDocument();
+    expect(screen.getByText("0.12%")).toBeInTheDocument();
+    expect(screen.getByText("0-6天: 1.50%; 7-29天: 0.50%")).toBeInTheDocument();
+    expect(screen.getByText("0.80% / 0.20% / 0.00%")).toBeInTheDocument();
+  });
 });
