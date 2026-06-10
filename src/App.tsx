@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
-import { fetchIndexComparison } from "./api/client";
+import type { StockConcentrationRow } from "./db/repositories";
+import { fetchIndexComparison, fetchStockConcentration } from "./api/client";
 import { DataStatus } from "./ui/DataStatus";
 import { IndexComparison } from "./ui/IndexComparison";
 import { StockConcentration } from "./ui/StockConcentration";
 
 export function App() {
   const [data, setData] = useState<{ onExchange: any[]; offExchange: any[] } | null>(null);
+  const [selectedStock, setSelectedStock] = useState("NVDA");
+  const [stockRows, setStockRows] = useState<StockConcentrationRow[]>([]);
 
   useEffect(() => {
     fetchIndexComparison("NASDAQ_100")
@@ -18,6 +21,26 @@ export function App() {
       });
   }, []);
 
+  useEffect(() => {
+    fetchStockConcentration(selectedStock)
+      .then(setStockRows)
+      .catch(() => {
+        setStockRows([
+          {
+            fundCode: "513100",
+            fundName: "纳指ETF",
+            venue: "on_exchange",
+            shareClass: "ETF",
+            stockCode: selectedStock,
+            stockName: selectedStock,
+            navPercent: selectedStock === "NVDA" ? 8.5 : 0,
+            reportPeriod: "2026Q1",
+            source: "mock"
+          }
+        ]);
+      });
+  }, [selectedStock]);
+
   return (
     <main className="app-shell">
       <header className="hero">
@@ -27,7 +50,7 @@ export function App() {
       </header>
       <DataStatus />
       {data ? <IndexComparison targetName="纳斯达克100" data={data} /> : <p>加载中...</p>}
-      <StockConcentration />
+      <StockConcentration selectedStock={selectedStock} rows={stockRows} onSelectStock={setSelectedStock} />
     </main>
   );
 }

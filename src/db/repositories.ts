@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { formatPercent } from "../domain/fees";
+import { matchesStockTarget } from "../domain/holdings";
 import type { FeeTier, FeeType, Fund, FundHolding, FundQuote, PurchaseLimit } from "../domain/types";
 
 export interface SnapshotBundle {
@@ -43,6 +44,19 @@ interface FeeRow {
   dataDate: string;
 }
 
+export interface StockConcentrationRow {
+  fundCode: string;
+  fundName: string;
+  venue: "on_exchange" | "off_exchange";
+  shareClass: string;
+  stockCode: string;
+  stockName: string;
+  navPercent: number;
+  holdingMarketValue?: number | null;
+  reportPeriod: string;
+  source: string;
+}
+
 export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBundle): void {
   const insertFund = db.prepare(`
     INSERT OR REPLACE INTO funds (
@@ -76,6 +90,13 @@ export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBund
     )
   `);
   const deleteFeeSnapshot = db.prepare("DELETE FROM fund_fees WHERE fund_code = ? AND source = ? AND data_date = ?");
+  const insertHolding = db.prepare(`
+    INSERT OR REPLACE INTO fund_holdings (
+      fund_code, stock_code, stock_name, nav_percent, holding_market_value, report_period, source, sync_run_id
+    ) VALUES (
+      @fundCode, @stockCode, @stockName, @navPercent, @holdingMarketValue, @reportPeriod, @source, @syncRunId
+    )
+  `);
 
   const tx = db.transaction(() => {
     for (const targetCode of uniqueSnapshotTargets(bundle.funds)) {
@@ -108,6 +129,12 @@ export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBund
         maxHoldingDays: fee.maxHoldingDays ?? null,
         amountTierLowerBound: fee.amountTierLowerBound ?? null,
         amountTierUpperBound: fee.amountTierUpperBound ?? null
+      });
+    }
+    for (const holding of bundle.holdings) {
+      insertHolding.run({
+        ...holding,
+        holdingMarketValue: holding.holdingMarketValue ?? null
       });
     }
   });
@@ -169,6 +196,35 @@ export function queryIndexComparison(db: Database.Database, targetCode: string):
     onExchange: rows.filter((row) => row.venue === "on_exchange"),
     offExchange: rows.filter((row) => row.venue === "off_exchange")
   };
+}
+
+export function queryStockConcentration(db: Database.Database, stockCode: string): StockConcentrationRow[] {
+  const rows = db.prepare(`
+    SELECT
+      h.fund_code AS fundCode,
+      f.name AS fundName,
+      f.venue,
+      f.share_class AS shareClass,
+      h.stock_code AS stockCode,
+      h.stock_name AS stockName,
+      h.nav_percent AS navPercent,
+      h.holding_market_value AS holdingMarketValue,
+      h.report_period AS reportPeriod,
+      h.source
+    FROM fund_holdings h
+    JOIN funds f ON f.code = h.fund_code
+    WHERE f.enabled = 1
+  `).all() as StockConcentrationRow[];
+
+  const matchingRows = rows.filter((row) =>
+    matchesStockTarget({ targetCode: stockCode, stockCode: row.stockCode, stockName: row.stockName })
+  );
+  const latestReportPeriod = matchingRows.map((row) => row.reportPeriod).sort().at(-1);
+  if (!latestReportPeriod) return [];
+
+  return matchingRows
+    .filter((row) => row.reportPeriod === latestReportPeriod)
+    .sort((a, b) => b.navPercent - a.navPercent);
 }
 
 function enrichRowsWithFees(db: Database.Database, rows: IndexComparisonRow[]): void {

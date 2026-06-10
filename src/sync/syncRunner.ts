@@ -1,8 +1,9 @@
 import type Database from "better-sqlite3";
 import { insertSnapshotBundle } from "../db/repositories";
 import { findTargetByCode } from "../domain/targets";
-import type { Fund, FundQuote } from "../domain/types";
+import type { Fund, FundHolding, FundQuote } from "../domain/types";
 import { createEastMoneyFundSearchProvider } from "../providers/eastmoneyFundSearch";
+import { createEastMoneyHoldingsProvider } from "../providers/eastmoneyHoldings";
 import { createEastMoneyOnExchangeQuoteProvider } from "../providers/eastmoneyOnExchangeQuotes";
 import { mockFees, mockFunds, mockHoldings, mockLimits, mockQuotes } from "../providers/mockProviders";
 import { createEastMoneyF10OffExchangeProvider, type OffExchangeFeeLimitSnapshot } from "../providers/eastmoneyF10";
@@ -14,12 +15,14 @@ interface DailySyncOptions {
   fundProviders?: DataProvider<Fund[]>[];
   quoteProviders?: DataProvider<FundQuote[]>[];
   offExchangeProviders?: DataProvider<OffExchangeFeeLimitSnapshot>[];
+  holdingProviders?: DataProvider<FundHolding[]>[];
 }
 
 export async function runDailySync(db: Database.Database, options: DailySyncOptions = {}): Promise<void> {
   const fundSnapshot = await resolveFunds(options);
   const quotes = await resolveQuotes(options, fundSnapshot);
   const offExchangeSnapshot = await resolveOffExchangeSnapshot(options, fundSnapshot);
+  const holdings = await resolveHoldings(options, fundSnapshot);
 
   insertSnapshotBundle(db, {
     syncRunId: "mock-run",
@@ -27,7 +30,7 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
     quotes,
     limits: offExchangeSnapshot.limits,
     fees: offExchangeSnapshot.fees,
-    holdings: mockHoldings
+    holdings
   });
 }
 
@@ -72,5 +75,18 @@ async function resolveOffExchangeSnapshot(options: DailySyncOptions, fundSnapsho
   } catch {
     if (!fundSnapshot.isFallback) return { limits: [], fees: [] };
     return { limits: mockLimits, fees: mockFees };
+  }
+}
+
+async function resolveHoldings(options: DailySyncOptions, fundSnapshot: { funds: Fund[]; isFallback: boolean }): Promise<FundHolding[]> {
+  const providers = options.holdingProviders ?? (options.useLiveProviders ? [createEastMoneyHoldingsProvider(fundSnapshot.funds)] : []);
+  if (providers.length === 0) return mockHoldings;
+
+  try {
+    const result = await runProviderChain(providers);
+    return result.data;
+  } catch {
+    if (!fundSnapshot.isFallback) return [];
+    return mockHoldings;
   }
 }

@@ -1,7 +1,7 @@
 import express from "express";
 import type Database from "better-sqlite3";
 import { openDatabase } from "../db/database";
-import { queryIndexComparison } from "../db/repositories";
+import { queryIndexComparison, queryStockConcentration } from "../db/repositories";
 import { TARGETS } from "../domain/targets";
 
 export function createApp(db: Database.Database) {
@@ -20,6 +20,10 @@ export function createApp(db: Database.Database) {
 
   app.get("/api/index-comparison/:targetCode", (req, res) => {
     res.json(queryIndexComparison(db, req.params.targetCode));
+  });
+
+  app.get("/api/stock-concentration/:stockCode", (req, res) => {
+    res.json(queryStockConcentration(db, req.params.stockCode));
   });
 
   app.get("/api/status", (_req, res) => {

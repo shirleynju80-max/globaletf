@@ -93,6 +93,28 @@ body {
   font-size: 13px;
 }
 
+.segmented-control {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.segmented-control button {
+  border: 1px solid #bdd4d1;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #ffffff;
+  color: #244541;
+  cursor: pointer;
+}
+
+.segmented-control button.active {
+  border-color: #24716b;
+  background: #24716b;
+  color: #ffffff;
+}
+
 .table-wrap {
   overflow-x: auto;
 }

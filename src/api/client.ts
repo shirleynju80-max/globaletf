@@ -1,4 +1,5 @@
 import type { Target } from "../domain/types";
+import type { StockConcentrationRow } from "../db/repositories";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8787";
 
@@ -11,6 +12,12 @@ export async function fetchTargets(): Promise<Target[]> {
 export async function fetchIndexComparison(targetCode: string): Promise<{ onExchange: any[]; offExchange: any[] }> {
   const response = await fetch(`${API_BASE}/api/index-comparison/${targetCode}`);
   if (!response.ok) throw new Error(`Failed to fetch index comparison: ${response.status}`);
+  return response.json();
+}
+
+export async function fetchStockConcentration(stockCode: string): Promise<StockConcentrationRow[]> {
+  const response = await fetch(`${API_BASE}/api/stock-concentration/${stockCode}`);
+  if (!response.ok) throw new Error(`Failed to fetch stock concentration: ${response.status}`);
   return response.json();
 }
 

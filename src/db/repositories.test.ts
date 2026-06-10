@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryDatabase } from "./database";
-import { insertSnapshotBundle, queryIndexComparison } from "./repositories";
+import { insertSnapshotBundle, queryIndexComparison, queryStockConcentration } from "./repositories";
 
 describe("repositories", () => {
   it("returns grouped index comparison rows from latest snapshots", () => {
@@ -151,5 +151,33 @@ describe("repositories", () => {
     const result = queryIndexComparison(db, "NASDAQ_100");
 
     expect(result.offExchange.map((row) => row.code)).toEqual(["021778"]);
+  });
+
+  it("returns latest stock concentration rows ranked by holding weight", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "513100", name: "纳指ETF", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true },
+        { code: "000834", name: "纳指100联接A", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "A", parentFundCode: "000834", enabled: true },
+        { code: "016532", name: "纳指100联接C", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "C", parentFundCode: "000834", enabled: false }
+      ],
+      quotes: [],
+      limits: [],
+      fees: [],
+      holdings: [
+        { fundCode: "513100", stockCode: "NVDA", stockName: "NVIDIA Corp", navPercent: 8.5, reportPeriod: "2025Q4", source: "eastmoney", syncRunId: "run-1" },
+        { fundCode: "513100", stockCode: "NVDA", stockName: "NVIDIA Corp", navPercent: 9.2, reportPeriod: "2026Q1", source: "eastmoney", syncRunId: "run-1" },
+        { fundCode: "000834", stockCode: "", stockName: "英伟达", navPercent: 10.1, reportPeriod: "2026Q1", source: "eastmoney", syncRunId: "run-1" },
+        { fundCode: "016532", stockCode: "NVDA", stockName: "NVIDIA Corp", navPercent: 11.5, reportPeriod: "2026Q1", source: "eastmoney", syncRunId: "run-1" }
+      ]
+    });
+
+    const result = queryStockConcentration(db, "NVDA");
+
+    expect(result).toEqual([
+      expect.objectContaining({ fundCode: "000834", fundName: "纳指100联接A", shareClass: "A", navPercent: 10.1, reportPeriod: "2026Q1" }),
+      expect.objectContaining({ fundCode: "513100", fundName: "纳指ETF", shareClass: "ETF", navPercent: 9.2, reportPeriod: "2026Q1" })
+    ]);
   });
 });
