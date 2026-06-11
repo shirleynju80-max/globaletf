@@ -55,6 +55,7 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
           <button type="submit">查询股票</button>
         </form>
       </div>
+      <p className="query-chip">当前查询：{selectedStock}</p>
 
       <div className="table-wrap">
         <table>
@@ -73,7 +74,7 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={8}>暂无持仓数据</td>
+                <td colSpan={8}>暂无 {selectedStock} 持仓数据</td>
               </tr>
             ) : (
               rows.map((row, index) => (

@@ -155,6 +155,18 @@ body {
   cursor: pointer;
 }
 
+.query-chip {
+  display: inline-flex;
+  margin: 12px 0 0;
+  border: 1px solid #dbe5e7;
+  border-radius: 999px;
+  padding: 5px 9px;
+  color: #244541;
+  background: #f4f7f8;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .table-wrap {
   overflow-x: auto;
 }

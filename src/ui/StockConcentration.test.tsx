@@ -28,6 +28,7 @@ describe("StockConcentration", () => {
     expect(screen.getByText("纳指100联接A")).toBeInTheDocument();
     expect(screen.getByText("10.10%")).toBeInTheDocument();
     expect(screen.getByText("2026Q1")).toBeInTheDocument();
+    expect(screen.getByText("当前查询：NVDA")).toBeInTheDocument();
   });
 
   it("submits a custom stock code", () => {
@@ -44,5 +45,18 @@ describe("StockConcentration", () => {
     fireEvent.click(screen.getByRole("button", { name: "查询股票" }));
 
     expect(onSelectStock).toHaveBeenCalledWith("GOOG");
+  });
+
+  it("shows the selected stock in the empty state", () => {
+    render(
+      <StockConcentration
+        selectedStock="GOOG"
+        rows={[]}
+        onSelectStock={() => undefined}
+      />
+    );
+
+    expect(screen.getByText("当前查询：GOOG")).toBeInTheDocument();
+    expect(screen.getByText("暂无 GOOG 持仓数据")).toBeInTheDocument();
   });
 });
