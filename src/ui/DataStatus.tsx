@@ -32,6 +32,7 @@ function formatStatus(label: string, row?: SyncStatusRow): string {
     row.freshItemCount == null ? null : `刷新${row.freshItemCount}条`,
     row.cachedItemCount == null ? null : `缓存${row.cachedItemCount}条`,
     row.durationMs == null ? null : `耗时${formatDuration(row.durationMs)}`,
+    formatUpdatedAt(row.updatedAt),
     row.message
   ].filter(Boolean);
 
@@ -47,4 +48,22 @@ function formatStatusValue(status: SyncStatusRow["status"]): string {
 function formatDuration(durationMs: number): string {
   if (durationMs < 1000) return `${durationMs}ms`;
   return `${(durationMs / 1000).toFixed(1)}s`;
+}
+
+function formatUpdatedAt(updatedAt: string): string | null {
+  const date = new Date(updatedAt);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  }).formatToParts(date);
+  const values = Object.fromEntries(parts.map((part) => [part.type, part.value]));
+
+  return `同步${values.year}-${values.month}-${values.day} ${values.hour}:${values.minute}`;
 }

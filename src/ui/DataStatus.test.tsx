@@ -20,6 +20,7 @@ describe("DataStatus", () => {
     expect(screen.getByText(/刷新1条/)).toBeInTheDocument();
     expect(screen.getByText(/缓存4条/)).toBeInTheDocument();
     expect(screen.getByText(/耗时1.3s/)).toBeInTheDocument();
+    expect(screen.getAllByText(/同步2026-06-10 17:30/)).toHaveLength(4);
     expect(screen.getByText(/限购：备用源/)).toBeInTheDocument();
     expect(screen.getByText(/F10 blocked/)).toBeInTheDocument();
     expect(screen.getByText(/持仓：正常/)).toBeInTheDocument();
