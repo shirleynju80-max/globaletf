@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createInMemoryDatabase } from "../db/database";
 import { queryIndexComparison, querySyncStatus } from "../db/repositories";
 import type { DataProvider } from "../providers/types";
@@ -76,6 +76,45 @@ describe("sync runner", () => {
     expect(status.purchaseLimit?.durationMs).toBe(40);
     expect(status.fee?.durationMs).toBe(40);
     expect(status.holding?.durationMs).toBe(5);
+  });
+
+  it("runs only the requested quote area", async () => {
+    const db = createInMemoryDatabase();
+    const funds: Fund[] = [
+      { code: "513100", name: "纳指ETF", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true }
+    ];
+    const fundProvider: DataProvider<Fund[]> = {
+      name: "test-funds",
+      fetch: async () => ({ ok: true, source: "test-funds", dataDate: "2026-06-11", confidence: 0.9, data: funds })
+    };
+    const quoteProvider: DataProvider<FundQuote[]> = {
+      name: "test-quotes",
+      fetch: async () => ({
+        ok: true,
+        source: "test-quotes",
+        dataDate: "2026-06-10",
+        confidence: 0.9,
+        data: [{ fundCode: "513100", closePrice: 1.3, closingPremiumDiscountRate: 0.01, turnover: 100, tradeDate: "2026-06-10", source: "test-quotes", syncRunId: "run-1" }]
+      })
+    };
+    const offExchangeProvider = { name: "test-f10", fetch: vi.fn() } satisfies DataProvider<OffExchangeFeeLimitSnapshot>;
+    const holdingProvider = { name: "test-holdings", fetch: vi.fn() } satisfies DataProvider<FundHolding[]>;
+
+    await runDailySync(db, {
+      areas: ["quote"],
+      fundProviders: [fundProvider],
+      quoteProviders: [quoteProvider],
+      offExchangeProviders: [offExchangeProvider],
+      holdingProviders: [holdingProvider]
+    });
+
+    const status = querySyncStatus(db);
+    expect(status.quote).toMatchObject({ status: "ok", source: "test-quotes", itemCount: 1 });
+    expect(status.purchaseLimit).toBeUndefined();
+    expect(status.fee).toBeUndefined();
+    expect(status.holding).toBeUndefined();
+    expect(offExchangeProvider.fetch).not.toHaveBeenCalled();
+    expect(holdingProvider.fetch).not.toHaveBeenCalled();
   });
 
   it("uses discovered fund universe for sync snapshots", async () => {

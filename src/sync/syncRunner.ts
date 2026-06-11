@@ -10,8 +10,11 @@ import { createEastMoneyF10OffExchangeProvider, type OffExchangeFeeLimitSnapshot
 import { runProviderChain } from "../providers/providerChain";
 import type { DataProvider, ProviderAttempt } from "../providers/types";
 
+export type SyncArea = "fund" | "quote" | "offExchange" | "holding";
+
 interface DailySyncOptions {
   useLiveProviders?: boolean;
+  areas?: SyncArea[];
   fundProviders?: DataProvider<Fund[]>[];
   quoteProviders?: DataProvider<FundQuote[]>[];
   offExchangeProviders?: DataProvider<OffExchangeFeeLimitSnapshot>[];
@@ -32,37 +35,53 @@ interface ResolvedOffExchange {
 }
 
 export async function runDailySync(db: Database.Database, options: DailySyncOptions = {}): Promise<void> {
+  const areas = new Set(options.areas?.length ? options.areas : ["fund", "quote", "offExchange", "holding"]);
   const now = options.now ?? Date.now;
   const fundStartedAt = now();
   const fundSnapshot = await resolveFunds(options);
   const fundDurationMs = elapsedMs(now, fundStartedAt);
-  const quoteStartedAt = now();
-  const quotes = await resolveQuotes(db, options, fundSnapshot);
-  const quoteDurationMs = elapsedMs(now, quoteStartedAt);
-  const offExchangeStartedAt = now();
-  const offExchangeSnapshot = await resolveOffExchangeSnapshot(options, fundSnapshot);
-  const offExchangeDurationMs = elapsedMs(now, offExchangeStartedAt);
-  const holdingStartedAt = now();
-  const holdings = await resolveHoldings(options, fundSnapshot);
-  const holdingDurationMs = elapsedMs(now, holdingStartedAt);
+  let quotes: ResolvedData<FundQuote[]> | undefined;
+  let quoteDurationMs: number | undefined;
+  if (areas.has("quote")) {
+    const quoteStartedAt = now();
+    quotes = await resolveQuotes(db, options, fundSnapshot);
+    quoteDurationMs = elapsedMs(now, quoteStartedAt);
+  }
+  let offExchangeSnapshot: ResolvedOffExchange | undefined;
+  let offExchangeDurationMs: number | undefined;
+  if (areas.has("offExchange")) {
+    const offExchangeStartedAt = now();
+    offExchangeSnapshot = await resolveOffExchangeSnapshot(options, fundSnapshot);
+    offExchangeDurationMs = elapsedMs(now, offExchangeStartedAt);
+  }
+  let holdings: ResolvedData<FundHolding[]> | undefined;
+  let holdingDurationMs: number | undefined;
+  if (areas.has("holding")) {
+    const holdingStartedAt = now();
+    holdings = await resolveHoldings(options, fundSnapshot);
+    holdingDurationMs = elapsedMs(now, holdingStartedAt);
+  }
 
   insertSnapshotBundle(db, {
     syncRunId: "mock-run",
     funds: fundSnapshot.data,
-    quotes: quotes.data,
-    limits: offExchangeSnapshot.data.limits,
-    fees: offExchangeSnapshot.data.fees,
-    holdings: holdings.data
+    quotes: quotes?.data ?? [],
+    limits: offExchangeSnapshot?.data.limits ?? [],
+    fees: offExchangeSnapshot?.data.fees ?? [],
+    holdings: holdings?.data ?? []
   });
 
   const updatedAt = new Date().toISOString();
-  for (const status of [
-    { area: "fund" as const, durationMs: fundDurationMs, ...fundSnapshot.status },
-    { area: "quote" as const, durationMs: quoteDurationMs, ...quotes.status },
-    { area: "purchaseLimit" as const, durationMs: offExchangeDurationMs, ...offExchangeSnapshot.limitStatus },
-    { area: "fee" as const, durationMs: offExchangeDurationMs, ...offExchangeSnapshot.feeStatus },
-    { area: "holding" as const, durationMs: holdingDurationMs, ...holdings.status }
-  ]) {
+  const statuses: SyncStatusRow[] = [];
+  if (areas.has("fund")) statuses.push({ area: "fund", durationMs: fundDurationMs, ...fundSnapshot.status, updatedAt });
+  if (quotes && quoteDurationMs != null) statuses.push({ area: "quote", durationMs: quoteDurationMs, ...quotes.status, updatedAt });
+  if (offExchangeSnapshot && offExchangeDurationMs != null) {
+    statuses.push({ area: "purchaseLimit", durationMs: offExchangeDurationMs, ...offExchangeSnapshot.limitStatus, updatedAt });
+    statuses.push({ area: "fee", durationMs: offExchangeDurationMs, ...offExchangeSnapshot.feeStatus, updatedAt });
+  }
+  if (holdings && holdingDurationMs != null) statuses.push({ area: "holding", durationMs: holdingDurationMs, ...holdings.status, updatedAt });
+
+  for (const status of statuses) {
     recordSyncStatus(db, { ...status, updatedAt });
   }
 }
