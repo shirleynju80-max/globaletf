@@ -6,6 +6,7 @@ Local web tool for comparing mainland China funds that provide exposure to overs
 
 - `npm install`: install dependencies.
 - `npm run sync:daily`: write the latest available validated snapshots.
+- `npm run acceptance`: check whether the local snapshot passes the first MVP acceptance gate.
 - `npm run api`: start the local API at `http://127.0.0.1:8787`.
 - `npm run dev`: start the Vite UI at `http://127.0.0.1:5173`.
 - `npm test`: run unit and UI tests.
