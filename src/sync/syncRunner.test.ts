@@ -3,7 +3,7 @@ import { createInMemoryDatabase } from "../db/database";
 import { queryIndexComparison, querySyncStatus } from "../db/repositories";
 import type { DataProvider } from "../providers/types";
 import type { OffExchangeFeeLimitSnapshot } from "../providers/eastmoneyF10";
-import type { Fund, FundQuote } from "../domain/types";
+import type { Fund, FundHolding, FundQuote } from "../domain/types";
 import { runDailySync } from "./syncRunner";
 
 describe("sync runner", () => {
@@ -39,17 +39,43 @@ describe("sync runner", () => {
     expect(feeCount.count).toBe(1);
   });
 
-  it("records elapsed duration on sync statuses", async () => {
+  it("records per-stage elapsed duration on sync statuses", async () => {
     const db = createInMemoryDatabase();
+    const funds: Fund[] = [
+      { code: "513100", name: "纳指ETF", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true }
+    ];
+    const fundProvider: DataProvider<Fund[]> = {
+      name: "test-funds",
+      fetch: async () => ({ ok: true, source: "test-funds", dataDate: "2026-06-11", confidence: 0.9, data: funds })
+    };
+    const quoteProvider: DataProvider<FundQuote[]> = {
+      name: "test-quotes",
+      fetch: async () => ({ ok: true, source: "test-quotes", dataDate: "2026-06-10", confidence: 0.9, data: [] })
+    };
+    const offExchangeProvider: DataProvider<OffExchangeFeeLimitSnapshot> = {
+      name: "test-f10",
+      fetch: async () => ({ ok: true, source: "test-f10", dataDate: "2026-06-11", confidence: 0.9, data: { limits: [], fees: [] } })
+    };
+    const holdingProvider: DataProvider<FundHolding[]> = {
+      name: "test-holdings",
+      fetch: async () => ({ ok: true, source: "test-holdings", dataDate: "2026Q1", confidence: 0.9, data: [] })
+    };
+    const times = [0, 11, 11, 31, 31, 71, 71, 76];
 
-    await runDailySync(db);
+    await runDailySync(db, {
+      fundProviders: [fundProvider],
+      quoteProviders: [quoteProvider],
+      offExchangeProviders: [offExchangeProvider],
+      holdingProviders: [holdingProvider],
+      now: () => times.shift() ?? 76
+    });
     const status = querySyncStatus(db);
 
-    expect(status.fund?.durationMs).toEqual(expect.any(Number));
-    expect(status.quote?.durationMs).toEqual(expect.any(Number));
-    expect(status.purchaseLimit?.durationMs).toEqual(expect.any(Number));
-    expect(status.fee?.durationMs).toEqual(expect.any(Number));
-    expect(status.holding?.durationMs).toEqual(expect.any(Number));
+    expect(status.fund?.durationMs).toBe(11);
+    expect(status.quote?.durationMs).toBe(20);
+    expect(status.purchaseLimit?.durationMs).toBe(40);
+    expect(status.fee?.durationMs).toBe(40);
+    expect(status.holding?.durationMs).toBe(5);
   });
 
   it("uses discovered fund universe for sync snapshots", async () => {

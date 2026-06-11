@@ -16,6 +16,7 @@ interface DailySyncOptions {
   quoteProviders?: DataProvider<FundQuote[]>[];
   offExchangeProviders?: DataProvider<OffExchangeFeeLimitSnapshot>[];
   holdingProviders?: DataProvider<FundHolding[]>[];
+  now?: () => number;
 }
 
 interface ResolvedData<T> {
@@ -31,12 +32,19 @@ interface ResolvedOffExchange {
 }
 
 export async function runDailySync(db: Database.Database, options: DailySyncOptions = {}): Promise<void> {
-  const startedAt = Date.now();
+  const now = options.now ?? Date.now;
+  const fundStartedAt = now();
   const fundSnapshot = await resolveFunds(options);
+  const fundDurationMs = elapsedMs(now, fundStartedAt);
+  const quoteStartedAt = now();
   const quotes = await resolveQuotes(db, options, fundSnapshot);
+  const quoteDurationMs = elapsedMs(now, quoteStartedAt);
+  const offExchangeStartedAt = now();
   const offExchangeSnapshot = await resolveOffExchangeSnapshot(options, fundSnapshot);
+  const offExchangeDurationMs = elapsedMs(now, offExchangeStartedAt);
+  const holdingStartedAt = now();
   const holdings = await resolveHoldings(options, fundSnapshot);
-  const durationMs = Date.now() - startedAt;
+  const holdingDurationMs = elapsedMs(now, holdingStartedAt);
 
   insertSnapshotBundle(db, {
     syncRunId: "mock-run",
@@ -49,14 +57,18 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
 
   const updatedAt = new Date().toISOString();
   for (const status of [
-    { area: "fund" as const, ...fundSnapshot.status },
-    { area: "quote" as const, ...quotes.status },
-    { area: "purchaseLimit" as const, ...offExchangeSnapshot.limitStatus },
-    { area: "fee" as const, ...offExchangeSnapshot.feeStatus },
-    { area: "holding" as const, ...holdings.status }
+    { area: "fund" as const, durationMs: fundDurationMs, ...fundSnapshot.status },
+    { area: "quote" as const, durationMs: quoteDurationMs, ...quotes.status },
+    { area: "purchaseLimit" as const, durationMs: offExchangeDurationMs, ...offExchangeSnapshot.limitStatus },
+    { area: "fee" as const, durationMs: offExchangeDurationMs, ...offExchangeSnapshot.feeStatus },
+    { area: "holding" as const, durationMs: holdingDurationMs, ...holdings.status }
   ]) {
-    recordSyncStatus(db, { ...status, durationMs, updatedAt });
+    recordSyncStatus(db, { ...status, updatedAt });
   }
+}
+
+function elapsedMs(now: () => number, startedAt: number): number {
+  return Math.max(0, Math.round(now() - startedAt));
 }
 
 async function resolveFunds(options: DailySyncOptions): Promise<ResolvedData<Fund[]>> {
