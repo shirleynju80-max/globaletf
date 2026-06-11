@@ -24,15 +24,36 @@ describe("acceptance checks", () => {
       ok: false
     }));
   });
+
+  it("fails when another configured index target has no fund products", () => {
+    const db = createAcceptanceDatabase({ includeOtherIndexTargets: false });
+
+    const result = runAcceptance(db);
+
+    expect(result.ok).toBe(false);
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      key: "indexComparison.SP_500",
+      ok: false
+    }));
+  });
 });
 
-function createAcceptanceDatabase(overrides: { holdings?: Parameters<typeof insertSnapshotBundle>[1]["holdings"] } = {}) {
+function createAcceptanceDatabase(overrides: { holdings?: Parameters<typeof insertSnapshotBundle>[1]["holdings"]; includeOtherIndexTargets?: boolean } = {}) {
+  const includeOtherIndexTargets = overrides.includeOtherIndexTargets ?? true;
   const db = createInMemoryDatabase();
   insertSnapshotBundle(db, {
     syncRunId: "acceptance-run",
     funds: [
       { code: "513100", name: "纳指ETF", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true },
-      { code: "000834", name: "纳指100联接A", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "A", enabled: true }
+      { code: "000834", name: "纳指100联接A", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "A", enabled: true },
+      ...(includeOtherIndexTargets ? [
+        { code: "513500", name: "标普500ETF", fundType: "ETF", venue: "on_exchange" as const, trackingTargetCode: "SP_500", shareClass: "ETF" as const, enabled: true },
+        { code: "050025", name: "博时标普500ETF联接A", fundType: "QDII", venue: "off_exchange" as const, trackingTargetCode: "SP_500", shareClass: "A" as const, enabled: true },
+        { code: "513880", name: "日经225ETF", fundType: "ETF", venue: "on_exchange" as const, trackingTargetCode: "NIKKEI_225", shareClass: "ETF" as const, enabled: true },
+        { code: "019449", name: "摩根日经225联接A", fundType: "QDII", venue: "off_exchange" as const, trackingTargetCode: "NIKKEI_225", shareClass: "A" as const, enabled: true },
+        { code: "513180", name: "恒生科技指数ETF", fundType: "ETF", venue: "on_exchange" as const, trackingTargetCode: "HSTECH", shareClass: "ETF" as const, enabled: true },
+        { code: "012348", name: "华夏恒生科技ETF联接A", fundType: "QDII", venue: "off_exchange" as const, trackingTargetCode: "HSTECH", shareClass: "A" as const, enabled: true }
+      ] : [])
     ],
     quotes: [{ fundCode: "513100", closePrice: 1.23, closingPremiumDiscountRate: 0.012, turnover: 120000000, tradeDate: "2026-06-10", source: "eastmoney-on-exchange-quote", syncRunId: "acceptance-run" }],
     limits: [{ fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "2026-06-11", confidence: 0.9, syncRunId: "acceptance-run" }],

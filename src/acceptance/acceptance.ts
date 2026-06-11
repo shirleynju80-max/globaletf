@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { queryIndexComparison, queryStockConcentration, querySyncStatus } from "../db/repositories";
+import { INDEX_TARGETS } from "../domain/targets";
 
 export interface AcceptanceCheck {
   key: string;
@@ -14,29 +15,38 @@ export interface AcceptanceResult {
 
 export function runAcceptance(db: Database.Database): AcceptanceResult {
   const status = querySyncStatus(db);
-  const comparison = queryIndexComparison(db, "NASDAQ_100");
+  const comparisons = INDEX_TARGETS.map((target) => ({
+    target,
+    comparison: queryIndexComparison(db, target.code)
+  }));
+  const nasdaqComparison = comparisons.find((entry) => entry.target.code === "NASDAQ_100")?.comparison ?? { onExchange: [], offExchange: [] };
   const stockConcentration = queryStockConcentration(db, "NVDA");
 
   const checks: AcceptanceCheck[] = [
     checkStatus(status),
+    ...comparisons.map(({ target, comparison }) => ({
+      key: `indexComparison.${target.code}`,
+      ok: comparison.onExchange.length > 0 && comparison.offExchange.length > 0,
+      message: `${target.code} on-exchange=${comparison.onExchange.length}, off-exchange=${comparison.offExchange.length}`
+    })),
     {
       key: "indexComparison",
-      ok: comparison.onExchange.length > 0 && comparison.offExchange.length > 0,
-      message: `NASDAQ_100 on-exchange=${comparison.onExchange.length}, off-exchange=${comparison.offExchange.length}`
+      ok: nasdaqComparison.onExchange.length > 0 && nasdaqComparison.offExchange.length > 0,
+      message: `NASDAQ_100 on-exchange=${nasdaqComparison.onExchange.length}, off-exchange=${nasdaqComparison.offExchange.length}`
     },
     {
       key: "onExchangeQuotes",
-      ok: comparison.onExchange.some((row) => row.closePrice != null && row.tradeDate),
+      ok: nasdaqComparison.onExchange.some((row) => row.closePrice != null && row.tradeDate),
       message: "At least one on-exchange ETF has close price and trade date"
     },
     {
       key: "offExchangeLimits",
-      ok: comparison.offExchange.some((row) => row.limitAmountYuan != null || row.status === "open" || row.status === "limited"),
+      ok: nasdaqComparison.offExchange.some((row) => row.limitAmountYuan != null || row.status === "open" || row.status === "limited"),
       message: "At least one off-exchange fund has purchase limit/status data"
     },
     {
       key: "offExchangeFees",
-      ok: comparison.offExchange.some((row) =>
+      ok: nasdaqComparison.offExchange.some((row) =>
         row.defaultSubscriptionRate != null ||
         row.managementRate != null ||
         row.custodianRate != null ||
