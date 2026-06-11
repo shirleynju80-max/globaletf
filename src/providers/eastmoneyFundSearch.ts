@@ -22,6 +22,11 @@ interface ProviderOptions extends TargetSelection {
   fetchImpl?: typeof fetch;
 }
 
+interface MultiTargetProviderOptions {
+  targets: TargetSelection[];
+  fetchImpl?: typeof fetch;
+}
+
 export function parseEastMoneyFundSearch(script: string): FundSearchRow[] {
   const jsonText = script.trim().replace(/^\uFEFF?var\s+r\s*=\s*/, "").replace(/;\s*$/, "");
   const rows = JSON.parse(jsonText) as string[][];
@@ -35,6 +40,10 @@ export function selectFundsForTarget(rows: FundSearchRow[], target: TargetSelect
     .map((row) => toFund(row, target.targetCode))
     .filter((fund): fund is Fund => fund != null)
     .sort((a, b) => a.code.localeCompare(b.code));
+}
+
+export function selectFundsForTargets(rows: FundSearchRow[], targets: TargetSelection[]): Fund[] {
+  return targets.flatMap((target) => selectFundsForTarget(rows, target));
 }
 
 export function createEastMoneyFundSearchProvider(options: ProviderOptions): DataProvider<Fund[]> {
@@ -53,6 +62,30 @@ export function createEastMoneyFundSearchProvider(options: ProviderOptions): Dat
 
         const funds = selectFundsForTarget(parseEastMoneyFundSearch(await response.text()), options);
         if (funds.length === 0) return { ok: false, errorCategory: "missing_fields", message: `No funds matched ${options.targetCode}` };
+        return { ok: true, data: funds, source: SOURCE, dataDate: new Date().toISOString().slice(0, 10), confidence: 0.75 };
+      } catch (error) {
+        return { ok: false, errorCategory: "network", message: error instanceof Error ? error.message : "Unknown fund search error" };
+      }
+    }
+  };
+}
+
+export function createEastMoneyMultiTargetFundSearchProvider(options: MultiTargetProviderOptions): DataProvider<Fund[]> {
+  return {
+    name: SOURCE,
+    fetch: async () => {
+      const fetchImpl = options.fetchImpl ?? fetch;
+      try {
+        const response = await fetchImpl(ENDPOINT, {
+          headers: {
+            "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
+            Referer: "https://fund.eastmoney.com/"
+          }
+        });
+        if (!response.ok) return { ok: false, errorCategory: "http", message: `${ENDPOINT} returned ${response.status}` };
+
+        const funds = selectFundsForTargets(parseEastMoneyFundSearch(await response.text()), options.targets);
+        if (funds.length === 0) return { ok: false, errorCategory: "missing_fields", message: "No funds matched configured index targets" };
         return { ok: true, data: funds, source: SOURCE, dataDate: new Date().toISOString().slice(0, 10), confidence: 0.75 };
       } catch (error) {
         return { ok: false, errorCategory: "network", message: error instanceof Error ? error.message : "Unknown fund search error" };

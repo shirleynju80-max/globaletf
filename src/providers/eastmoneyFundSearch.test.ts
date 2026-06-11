@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createEastMoneyFundSearchProvider, parseEastMoneyFundSearch, selectFundsForTarget } from "./eastmoneyFundSearch";
+import { createEastMoneyFundSearchProvider, createEastMoneyMultiTargetFundSearchProvider, parseEastMoneyFundSearch, selectFundsForTarget } from "./eastmoneyFundSearch";
 
 const sampleScript = `var r = [
   ["000834","DCNSDK100ETFLJQDIIA","大成纳斯达克100ETF联接(QDII)A","指数型-海外股票","DACHENG"],
@@ -12,6 +12,11 @@ const sampleScript = `var r = [
   ["160213","GTNSDK100ZS","国泰纳斯达克100指数","指数型-海外股票","GUOTAI"],
   ["000055","GFNSDK100ETFLJMYQDIIA","广发纳斯达克100ETF联接美元(QDII)A","指数型-海外股票","GUANGFA"],
   ["000001","HXCZHH","华夏成长混合","混合型-灵活","HUAXIA"]
+];`;
+
+const multiTargetSampleScript = `var r = [
+  ["159513","NSDK100ETFDC","纳斯达克100ETF大成","指数型-海外股票","DACHENG"],
+  ["513500","BP500ETF","标普500ETF","指数型-海外股票","BIAOPU"]
 ];`;
 
 describe("East Money fund search parser", () => {
@@ -64,5 +69,26 @@ describe("East Money fund search provider", () => {
     if (!result.ok) return;
     expect(fetchImpl).toHaveBeenCalledWith("https://fund.eastmoney.com/js/fundcode_search.js", expect.objectContaining({ headers: expect.any(Object) }));
     expect(result.data.some((fund) => fund.code === "021778" && fund.shareClass === "F")).toBe(true);
+  });
+
+  it("fetches once and maps funds for multiple index targets", async () => {
+    const fetchImpl = vi.fn(async () => new Response(multiTargetSampleScript, { status: 200 }));
+    const provider = createEastMoneyMultiTargetFundSearchProvider({
+      targets: [
+        { targetCode: "NASDAQ_100", targetName: "纳斯达克100", aliases: ["纳指100"] },
+        { targetCode: "SP_500", targetName: "标普500", aliases: ["标普 500"] }
+      ],
+      fetchImpl
+    });
+
+    const result = await provider.fetch();
+
+    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data.map((fund) => [fund.code, fund.trackingTargetCode])).toEqual([
+      ["159513", "NASDAQ_100"],
+      ["513500", "SP_500"]
+    ]);
   });
 });

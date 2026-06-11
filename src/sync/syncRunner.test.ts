@@ -7,6 +7,24 @@ import type { Fund, FundHolding, FundQuote } from "../domain/types";
 import { runDailySync } from "./syncRunner";
 
 describe("sync runner", () => {
+  it("discovers funds for every configured index target when live fund search is enabled", async () => {
+    const db = createInMemoryDatabase();
+    const fetchImpl = vi.fn(async () => new Response(`var r = [
+      ["159513","NSDK100ETFDC","纳斯达克100ETF大成","指数型-海外股票","DACHENG"],
+      ["513500","BP500ETF","标普500ETF","指数型-海外股票","BIAOPU"]
+    ];`, { status: 200 }));
+    vi.stubGlobal("fetch", fetchImpl);
+
+    try {
+      await runDailySync(db, { useLiveProviders: true, areas: ["fund"] });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    expect(queryIndexComparison(db, "NASDAQ_100").onExchange.map((row) => row.code)).toEqual(["159513"]);
+    expect(queryIndexComparison(db, "SP_500").onExchange.map((row) => row.code)).toEqual(["513500"]);
+  });
+
   it("writes mock snapshots and keeps them queryable", async () => {
     const db = createInMemoryDatabase();
     await runDailySync(db);

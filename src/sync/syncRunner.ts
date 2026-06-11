@@ -1,8 +1,8 @@
 import type Database from "better-sqlite3";
 import { insertSnapshotBundle, recordSyncStatus, type SyncStatusRow } from "../db/repositories";
-import { findTargetByCode } from "../domain/targets";
+import { INDEX_TARGETS } from "../domain/targets";
 import type { Fund, FundHolding, FundQuote } from "../domain/types";
-import { createEastMoneyFundSearchProvider } from "../providers/eastmoneyFundSearch";
+import { createEastMoneyMultiTargetFundSearchProvider } from "../providers/eastmoneyFundSearch";
 import { createEastMoneyHoldingsProvider } from "../providers/eastmoneyHoldings";
 import { createEastMoneyOnExchangeQuoteProvider } from "../providers/eastmoneyOnExchangeQuotes";
 import { mockFees, mockFunds, mockHoldings, mockLimits, mockQuotes } from "../providers/mockProviders";
@@ -91,11 +91,16 @@ function elapsedMs(now: () => number, startedAt: number): number {
 }
 
 async function resolveFunds(options: DailySyncOptions): Promise<ResolvedData<Fund[]>> {
-  const target = findTargetByCode("NASDAQ_100");
   const providers =
     options.fundProviders ??
-    (options.useLiveProviders && target
-      ? [createEastMoneyFundSearchProvider({ targetCode: target.code, targetName: target.name, aliases: target.aliases })]
+    (options.useLiveProviders
+      ? [createEastMoneyMultiTargetFundSearchProvider({
+          targets: INDEX_TARGETS.map((target) => ({
+            targetCode: target.code,
+            targetName: target.name,
+            aliases: target.aliases
+          }))
+        })]
       : []);
 
   if (providers.length === 0) return resolvedOk(mockFunds, "mock", latestFundDate(), true);
