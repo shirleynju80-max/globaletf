@@ -31,10 +31,12 @@ interface ResolvedOffExchange {
 }
 
 export async function runDailySync(db: Database.Database, options: DailySyncOptions = {}): Promise<void> {
+  const startedAt = Date.now();
   const fundSnapshot = await resolveFunds(options);
   const quotes = await resolveQuotes(db, options, fundSnapshot);
   const offExchangeSnapshot = await resolveOffExchangeSnapshot(options, fundSnapshot);
   const holdings = await resolveHoldings(options, fundSnapshot);
+  const durationMs = Date.now() - startedAt;
 
   insertSnapshotBundle(db, {
     syncRunId: "mock-run",
@@ -53,7 +55,7 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
     { area: "fee" as const, ...offExchangeSnapshot.feeStatus },
     { area: "holding" as const, ...holdings.status }
   ]) {
-    recordSyncStatus(db, { ...status, updatedAt });
+    recordSyncStatus(db, { ...status, durationMs, updatedAt });
   }
 }
 

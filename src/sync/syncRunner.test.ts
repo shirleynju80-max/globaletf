@@ -39,6 +39,19 @@ describe("sync runner", () => {
     expect(feeCount.count).toBe(1);
   });
 
+  it("records elapsed duration on sync statuses", async () => {
+    const db = createInMemoryDatabase();
+
+    await runDailySync(db);
+    const status = querySyncStatus(db);
+
+    expect(status.fund?.durationMs).toEqual(expect.any(Number));
+    expect(status.quote?.durationMs).toEqual(expect.any(Number));
+    expect(status.purchaseLimit?.durationMs).toEqual(expect.any(Number));
+    expect(status.fee?.durationMs).toEqual(expect.any(Number));
+    expect(status.holding?.durationMs).toEqual(expect.any(Number));
+  });
+
   it("uses discovered fund universe for sync snapshots", async () => {
     const db = createInMemoryDatabase();
     const funds: Fund[] = [

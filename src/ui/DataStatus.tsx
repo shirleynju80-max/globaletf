@@ -31,6 +31,7 @@ function formatStatus(label: string, row?: SyncStatusRow): string {
     `${row.itemCount}条`,
     row.freshItemCount == null ? null : `刷新${row.freshItemCount}条`,
     row.cachedItemCount == null ? null : `缓存${row.cachedItemCount}条`,
+    row.durationMs == null ? null : `耗时${formatDuration(row.durationMs)}`,
     row.message
   ].filter(Boolean);
 
@@ -41,4 +42,9 @@ function formatStatusValue(status: SyncStatusRow["status"]): string {
   if (status === "ok") return "正常";
   if (status === "fallback") return "备用源";
   return "失败";
+}
+
+function formatDuration(durationMs: number): string {
+  if (durationMs < 1000) return `${durationMs}ms`;
+  return `${(durationMs / 1000).toFixed(1)}s`;
 }

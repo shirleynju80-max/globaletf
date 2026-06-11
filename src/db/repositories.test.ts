@@ -192,6 +192,7 @@ describe("repositories", () => {
       itemCount: 33,
       freshItemCount: 30,
       cachedItemCount: 3,
+      durationMs: 1280,
       updatedAt: "2026-06-10T09:30:00.000Z"
     });
     recordSyncStatus(db, {
@@ -213,7 +214,8 @@ describe("repositories", () => {
       dataDate: "2026-06-10",
       itemCount: 33,
       freshItemCount: 30,
-      cachedItemCount: 3
+      cachedItemCount: 3,
+      durationMs: 1280
     });
     expect(status.quote).toMatchObject({
       status: "error",

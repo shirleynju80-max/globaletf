@@ -73,6 +73,7 @@ export function migrate(db: Database.Database): void {
       item_count INTEGER NOT NULL,
       fresh_item_count INTEGER,
       cached_item_count INTEGER,
+      duration_ms INTEGER,
       error_category TEXT,
       message TEXT,
       updated_at TEXT NOT NULL
@@ -122,5 +123,8 @@ function addSyncStatusCountColumns(db: Database.Database): void {
   }
   if (!names.has("cached_item_count")) {
     db.exec("ALTER TABLE sync_status ADD COLUMN cached_item_count INTEGER");
+  }
+  if (!names.has("duration_ms")) {
+    db.exec("ALTER TABLE sync_status ADD COLUMN duration_ms INTEGER");
   }
 }

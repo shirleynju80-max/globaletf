@@ -28,4 +28,25 @@ describe("schema migration", () => {
     const info = db.prepare("PRAGMA table_info(fund_quotes)").all() as Array<{ name: string; notnull: number }>;
     expect(info.find((column) => column.name === "closing_premium_discount_rate")?.notnull).toBe(0);
   });
+
+  it("adds sync duration to legacy status tables", () => {
+    const db = new Database(":memory:");
+    db.exec(`
+      CREATE TABLE sync_status (
+        area TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        source TEXT,
+        data_date TEXT,
+        item_count INTEGER NOT NULL,
+        error_category TEXT,
+        message TEXT,
+        updated_at TEXT NOT NULL
+      );
+    `);
+
+    migrate(db);
+
+    const info = db.prepare("PRAGMA table_info(sync_status)").all() as Array<{ name: string }>;
+    expect(info.map((column) => column.name)).toContain("duration_ms");
+  });
 });
