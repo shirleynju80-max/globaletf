@@ -1,6 +1,6 @@
 import type { Fund, FundHolding } from "../domain/types";
 import type { DataProvider } from "./types";
-import { mapConcurrent, withTimeout } from "./requestUtils";
+import { fetchWithTimeout, mapConcurrent } from "./requestUtils";
 
 const SOURCE = "eastmoney-f10-jjcc";
 const DEFAULT_REQUEST_TIMEOUT_MS = 12_000;
@@ -103,12 +103,12 @@ async function fetchFundHoldings(fetchImpl: typeof fetch, fundCode: string, init
 
 async function fetchHoldingPage(fetchImpl: typeof fetch, fundCode: string, year: number, requestTimeoutMs?: number): Promise<string> {
   const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&year=${year}&topline=10`;
-  const response = await withTimeout(fetchImpl(url, {
+  const response = await fetchWithTimeout(fetchImpl, url, {
     headers: {
       "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
       Referer: `https://fundf10.eastmoney.com/ccmx_${fundCode}.html`
     }
-  }), requestTimeoutMs);
+  }, requestTimeoutMs);
   if (!response.ok) return "";
   return response.text();
 }

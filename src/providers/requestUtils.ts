@@ -33,3 +33,44 @@ export async function withTimeout<T>(promise: Promise<T>, timeoutMs?: number): P
     if (timeoutId) clearTimeout(timeoutId);
   }
 }
+
+export async function fetchWithTimeout(
+  fetchImpl: typeof fetch,
+  input: Parameters<typeof fetch>[0],
+  init: Parameters<typeof fetch>[1] = {},
+  timeoutMs?: number
+): Promise<Response> {
+  if (!timeoutMs || timeoutMs <= 0) return fetchImpl(input, init);
+
+  const controller = new AbortController();
+  const timeoutError = new Error(`Request timed out after ${timeoutMs}ms`);
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const signal = mergeSignals(init.signal, controller.signal);
+
+  try {
+    return await Promise.race([
+      fetchImpl(input, { ...init, signal }),
+      new Promise<Response>((_resolve, reject) => {
+        timeoutId = setTimeout(() => {
+          controller.abort(timeoutError);
+          reject(timeoutError);
+        }, timeoutMs);
+      })
+    ]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+function mergeSignals(existing: AbortSignal | null | undefined, timeoutSignal: AbortSignal): AbortSignal {
+  if (!existing) return timeoutSignal;
+  if (existing.aborted) return existing;
+
+  const controller = new AbortController();
+  const abortFromExisting = () => controller.abort(existing.reason);
+  const abortFromTimeout = () => controller.abort(timeoutSignal.reason);
+  existing.addEventListener("abort", abortFromExisting, { once: true });
+  timeoutSignal.addEventListener("abort", abortFromTimeout, { once: true });
+
+  return controller.signal;
+}

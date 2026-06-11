@@ -1,7 +1,7 @@
 import { defaultChannelScopeForShareClass } from "../domain/purchaseLimits";
 import type { FeeTier, Fund, PurchaseLimit, PurchaseStatus } from "../domain/types";
 import type { DataProvider, ProviderFetchResult } from "./types";
-import { mapConcurrent, withTimeout } from "./requestUtils";
+import { fetchWithTimeout, mapConcurrent } from "./requestUtils";
 
 const SOURCE = "tiantian-f10-jjfl";
 const DEFAULT_REQUEST_TIMEOUT_MS = 12_000;
@@ -98,12 +98,12 @@ async function fetchFundFeesAndLimits(
 ): Promise<{ limit: PurchaseLimit; fees: FeeTier[] } | null> {
   const url = `https://fundf10.eastmoney.com/jjfl_${fund.code}.html`;
   try {
-    const response = await withTimeout(fetchImpl(url, {
+    const response = await fetchWithTimeout(fetchImpl, url, {
       headers: {
         "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
         Referer: "https://fund.eastmoney.com/"
       }
-    }), requestTimeoutMs);
+    }, requestTimeoutMs);
     if (!response.ok) return null;
 
     return parseEastMoneyF10FeesAndLimits({ fund, html: await response.text(), dataDate, syncRunId });
