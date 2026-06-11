@@ -118,4 +118,39 @@ describe("East Money F10 provider", () => {
     if (!result.ok) return;
     expect(result.data.limits.map((limit) => limit.fundCode)).toEqual(["000834"]);
   });
+
+  it("limits concurrent F10 requests and skips timed out funds", async () => {
+    let activeRequests = 0;
+    let maxActiveRequests = 0;
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      activeRequests += 1;
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+      if (url.includes("016533")) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        activeRequests -= 1;
+        return new Response(sampleHtml, { status: 200 });
+      }
+      activeRequests -= 1;
+      return new Response(sampleHtml, { status: 200 });
+    }) as typeof fetch;
+    const funds = [
+      baseFund,
+      { ...baseFund, code: "016533", name: "嘉实纳斯达克100ETF发起联接(QDII)C人民币", shareClass: "C" as const },
+      { ...baseFund, code: "021778", name: "广发纳指100ETF联接(QDII)人民币F", shareClass: "F" as const }
+    ];
+
+    const result = await createEastMoneyF10OffExchangeProvider(funds, {
+      fetchImpl,
+      dataDate: "2026-06-09",
+      syncRunId: "run-1",
+      concurrency: 2,
+      requestTimeoutMs: 15
+    }).fetch();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(maxActiveRequests).toBeLessThanOrEqual(2);
+    expect(result.data.limits.map((limit) => limit.fundCode)).toEqual(["000834", "021778"]);
+  });
 });

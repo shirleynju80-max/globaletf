@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Fund } from "../domain/types";
 import { createEastMoneyHoldingsProvider, parseEastMoneyHoldingsPage } from "./eastmoneyHoldings";
 
@@ -47,5 +47,40 @@ describe("eastmoney holdings provider", () => {
     expect(requestedUrls.some((url) => url.includes("year=2025"))).toBe(true);
     expect(requestedUrls.some((url) => url.includes("year=2023"))).toBe(true);
     expect(result.data).toContainEqual(expect.objectContaining({ fundCode: "000834", stockCode: "NVDA" }));
+  });
+
+  it("limits concurrent holding requests and skips timed out funds", async () => {
+    const funds: Fund[] = [
+      { code: "000834", name: "纳指100联接A", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "A", enabled: true },
+      { code: "016533", name: "纳指100联接C", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "C", enabled: true },
+      { code: "513390", name: "纳指100ETF", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true }
+    ];
+    let activeRequests = 0;
+    let maxActiveRequests = 0;
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      activeRequests += 1;
+      maxActiveRequests = Math.max(maxActiveRequests, activeRequests);
+      if (url.includes("016533")) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        activeRequests -= 1;
+        return new Response(samplePage, { status: 200 });
+      }
+      activeRequests -= 1;
+      return new Response(samplePage, { status: 200 });
+    }) as typeof fetch;
+
+    const result = await createEastMoneyHoldingsProvider(funds, {
+      fetchImpl,
+      years: [2023],
+      syncRunId: "run-1",
+      concurrency: 2,
+      requestTimeoutMs: 15
+    }).fetch();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(maxActiveRequests).toBeLessThanOrEqual(2);
+    expect([...new Set(result.data.map((row) => row.fundCode))]).toEqual(["000834", "513390"]);
   });
 });

@@ -1,8 +1,10 @@
 import { defaultChannelScopeForShareClass } from "../domain/purchaseLimits";
 import type { FeeTier, Fund, PurchaseLimit, PurchaseStatus } from "../domain/types";
 import type { DataProvider, ProviderFetchResult } from "./types";
+import { mapConcurrent, withTimeout } from "./requestUtils";
 
 const SOURCE = "tiantian-f10-jjfl";
+const DEFAULT_REQUEST_TIMEOUT_MS = 12_000;
 
 export interface OffExchangeFeeLimitSnapshot {
   limits: PurchaseLimit[];
@@ -20,6 +22,8 @@ interface ProviderOptions {
   fetchImpl?: typeof fetch;
   dataDate?: string;
   syncRunId?: string;
+  concurrency?: number;
+  requestTimeoutMs?: number;
 }
 
 export function parseEastMoneyF10FeesAndLimits(input: ParseInput): { limit: PurchaseLimit; fees: FeeTier[] } {
@@ -60,24 +64,19 @@ export function createEastMoneyF10OffExchangeProvider(funds: Fund[], options: Pr
       const syncRunId = options.syncRunId ?? `eastmoney-f10-${dataDate}`;
       const limits: PurchaseLimit[] = [];
       const fees: FeeTier[] = [];
+      const concurrency = options.concurrency ?? 4;
 
       try {
-        for (const fund of funds.filter((item) => item.enabled && item.venue === "off_exchange")) {
-          const url = `https://fundf10.eastmoney.com/jjfl_${fund.code}.html`;
-          try {
-            const response = await fetchImpl(url, {
-              headers: {
-                "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
-                Referer: "https://fund.eastmoney.com/"
-              }
-            });
-            if (!response.ok) continue;
+        const results = await mapConcurrent(
+          funds.filter((item) => item.enabled && item.venue === "off_exchange"),
+          concurrency,
+          async (fund) => fetchFundFeesAndLimits(fetchImpl, fund, dataDate, syncRunId, options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS)
+        );
 
-            const parsed = parseEastMoneyF10FeesAndLimits({ fund, html: await response.text(), dataDate, syncRunId });
+        for (const parsed of results) {
+          if (parsed) {
             limits.push(parsed.limit);
             fees.push(...parsed.fees);
-          } catch {
-            continue;
           }
         }
 
@@ -88,6 +87,29 @@ export function createEastMoneyF10OffExchangeProvider(funds: Fund[], options: Pr
       }
     }
   };
+}
+
+async function fetchFundFeesAndLimits(
+  fetchImpl: typeof fetch,
+  fund: Fund,
+  dataDate: string,
+  syncRunId: string,
+  requestTimeoutMs?: number
+): Promise<{ limit: PurchaseLimit; fees: FeeTier[] } | null> {
+  const url = `https://fundf10.eastmoney.com/jjfl_${fund.code}.html`;
+  try {
+    const response = await withTimeout(fetchImpl(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
+        Referer: "https://fund.eastmoney.com/"
+      }
+    }), requestTimeoutMs);
+    if (!response.ok) return null;
+
+    return parseEastMoneyF10FeesAndLimits({ fund, html: await response.text(), dataDate, syncRunId });
+  } catch {
+    return null;
+  }
 }
 
 function parseOperationFees(html: string, base: Omit<FeeTier, "feeType" | "rate">): FeeTier[] {

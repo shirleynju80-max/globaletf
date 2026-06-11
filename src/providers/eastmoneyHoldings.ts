@@ -1,7 +1,9 @@
 import type { Fund, FundHolding } from "../domain/types";
 import type { DataProvider } from "./types";
+import { mapConcurrent, withTimeout } from "./requestUtils";
 
 const SOURCE = "eastmoney-f10-jjcc";
+const DEFAULT_REQUEST_TIMEOUT_MS = 12_000;
 
 interface ParseInput {
   fundCode: string;
@@ -14,6 +16,8 @@ interface ProviderOptions {
   dataDate?: string;
   years?: number[];
   syncRunId?: string;
+  concurrency?: number;
+  requestTimeoutMs?: number;
 }
 
 export function parseEastMoneyHoldingsPage(input: ParseInput): FundHolding[] {
@@ -53,13 +57,14 @@ export function createEastMoneyHoldingsProvider(funds: Fund[], options: Provider
       const dataDate = options.dataDate ?? new Date().toISOString().slice(0, 10);
       const syncRunId = options.syncRunId ?? `eastmoney-holdings-${dataDate}`;
       const initialYears = options.years ?? [new Date().getFullYear(), new Date().getFullYear() - 1];
-      const holdings: FundHolding[] = [];
+      const concurrency = options.concurrency ?? 4;
 
       try {
-        for (const fund of funds.filter((item) => item.enabled)) {
-          const fundHoldings = await fetchFundHoldings(fetchImpl, fund.code, initialYears, syncRunId);
-          holdings.push(...fundHoldings);
-        }
+        const holdings = (await mapConcurrent(
+          funds.filter((item) => item.enabled),
+          concurrency,
+          (fund) => fetchFundHoldings(fetchImpl, fund.code, initialYears, syncRunId, options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS)
+        )).flat();
 
         if (holdings.length === 0) return { ok: false, errorCategory: "missing_fields", message: "No holdings parsed from East Money F10" };
         return { ok: true, data: holdings, source: SOURCE, dataDate, confidence: 0.8 };
@@ -70,7 +75,7 @@ export function createEastMoneyHoldingsProvider(funds: Fund[], options: Provider
   };
 }
 
-async function fetchFundHoldings(fetchImpl: typeof fetch, fundCode: string, initialYears: number[], syncRunId: string): Promise<FundHolding[]> {
+async function fetchFundHoldings(fetchImpl: typeof fetch, fundCode: string, initialYears: number[], syncRunId: string, requestTimeoutMs?: number): Promise<FundHolding[]> {
   const triedYears = new Set<number>();
   const queue = [...initialYears];
 
@@ -79,7 +84,12 @@ async function fetchFundHoldings(fetchImpl: typeof fetch, fundCode: string, init
     if (!year || triedYears.has(year)) continue;
     triedYears.add(year);
 
-    const html = await fetchHoldingPage(fetchImpl, fundCode, year);
+    let html = "";
+    try {
+      html = await fetchHoldingPage(fetchImpl, fundCode, year, requestTimeoutMs);
+    } catch {
+      return [];
+    }
     const holdings = parseEastMoneyHoldingsPage({ fundCode, html, syncRunId });
     if (holdings.length > 0) return holdings;
 
@@ -91,14 +101,14 @@ async function fetchFundHoldings(fetchImpl: typeof fetch, fundCode: string, init
   return [];
 }
 
-async function fetchHoldingPage(fetchImpl: typeof fetch, fundCode: string, year: number): Promise<string> {
+async function fetchHoldingPage(fetchImpl: typeof fetch, fundCode: string, year: number, requestTimeoutMs?: number): Promise<string> {
   const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&year=${year}&topline=10`;
-  const response = await fetchImpl(url, {
+  const response = await withTimeout(fetchImpl(url, {
     headers: {
       "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
       Referer: `https://fundf10.eastmoney.com/ccmx_${fundCode}.html`
     }
-  });
+  }), requestTimeoutMs);
   if (!response.ok) return "";
   return response.text();
 }
