@@ -93,6 +93,20 @@ body {
   font-size: 13px;
 }
 
+.target-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+
+.target-selector > span {
+  color: #51616a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .segmented-control {
   display: flex;
   flex-wrap: wrap;
