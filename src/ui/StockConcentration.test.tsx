@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { StockConcentration } from "./StockConcentration";
 
 describe("StockConcentration", () => {
@@ -28,5 +28,21 @@ describe("StockConcentration", () => {
     expect(screen.getByText("纳指100联接A")).toBeInTheDocument();
     expect(screen.getByText("10.10%")).toBeInTheDocument();
     expect(screen.getByText("2026Q1")).toBeInTheDocument();
+  });
+
+  it("submits a custom stock code", () => {
+    const onSelectStock = vi.fn();
+    render(
+      <StockConcentration
+        selectedStock="NVDA"
+        rows={[]}
+        onSelectStock={onSelectStock}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("自定义股票代码"), { target: { value: "goog" } });
+    fireEvent.click(screen.getByRole("button", { name: "查询股票" }));
+
+    expect(onSelectStock).toHaveBeenCalledWith("GOOG");
   });
 });

@@ -97,7 +97,6 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 14px;
 }
 
 .segmented-control button {
@@ -113,6 +112,47 @@ body {
   border-color: #24716b;
   background: #24716b;
   color: #ffffff;
+}
+
+.stock-selector {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
+.stock-search {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.stock-search label {
+  color: #51616a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.stock-search input {
+  width: 112px;
+  border: 1px solid #bdd4d1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #172026;
+  font: inherit;
+  text-transform: uppercase;
+}
+
+.stock-search button {
+  border: 1px solid #24716b;
+  border-radius: 8px;
+  padding: 8px 12px;
+  background: #24716b;
+  color: #ffffff;
+  cursor: pointer;
 }
 
 .table-wrap {

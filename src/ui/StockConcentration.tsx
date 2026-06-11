@@ -1,3 +1,4 @@
+import { useState, type FormEvent } from "react";
 import type { StockConcentrationRow } from "../db/repositories";
 
 const STOCK_OPTIONS = ["NVDA", "AAPL", "MSFT", "TSLA", "META"];
@@ -9,6 +10,15 @@ interface Props {
 }
 
 export function StockConcentration({ selectedStock, rows, onSelectStock }: Props) {
+  const [customStock, setCustomStock] = useState("");
+
+  function submitCustomStock(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const normalized = customStock.trim().toUpperCase();
+    if (!normalized) return;
+    onSelectStock(normalized);
+  }
+
   return (
     <section className="panel compact-panel">
       <div className="section-heading">
@@ -20,17 +30,30 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
       </div>
       <p className="note">持仓来自基金定期报告，不代表实时持仓。第一版预设 NVDA、AAPL、MSFT、TSLA、META。</p>
 
-      <div className="segmented-control" aria-label="选择股票">
-        {STOCK_OPTIONS.map((stockCode) => (
-          <button
-            key={stockCode}
-            className={stockCode === selectedStock ? "active" : ""}
-            type="button"
-            onClick={() => onSelectStock(stockCode)}
-          >
-            {stockCode}
-          </button>
-        ))}
+      <div className="stock-selector">
+        <div className="segmented-control" aria-label="选择股票">
+          {STOCK_OPTIONS.map((stockCode) => (
+            <button
+              key={stockCode}
+              className={stockCode === selectedStock ? "active" : ""}
+              type="button"
+              onClick={() => onSelectStock(stockCode)}
+            >
+              {stockCode}
+            </button>
+          ))}
+        </div>
+        <form className="stock-search" onSubmit={submitCustomStock}>
+          <label htmlFor="custom-stock">自定义股票代码</label>
+          <input
+            id="custom-stock"
+            value={customStock}
+            onChange={(event) => setCustomStock(event.target.value)}
+            placeholder="如 GOOG"
+            autoCapitalize="characters"
+          />
+          <button type="submit">查询股票</button>
+        </form>
       </div>
 
       <div className="table-wrap">
