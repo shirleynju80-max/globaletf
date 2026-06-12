@@ -270,6 +270,8 @@ function compareOffExchangeRows(a: IndexComparisonRow, b: IndexComparisonRow): n
   if (capacityRankDiff !== 0) return capacityRankDiff;
   const limitDiff = (b.limitAmountYuan ?? -1) - (a.limitAmountYuan ?? -1);
   if (limitDiff !== 0) return limitDiff;
+  const visibleCostDiff = visibleFeeCost(a) - visibleFeeCost(b);
+  if (Number.isFinite(visibleCostDiff) && visibleCostDiff !== 0) return visibleCostDiff;
   return a.code.localeCompare(b.code);
 }
 
@@ -277,6 +279,12 @@ function purchaseCapacityRank(row: IndexComparisonRow): number {
   if (row.status === "open") return 0;
   if (row.limitAmountYuan != null) return 1;
   return 2;
+}
+
+function visibleFeeCost(row: IndexComparisonRow): number {
+  const rates: Array<number | null | undefined> = [row.defaultSubscriptionRate, row.managementRate, row.custodianRate, row.salesServiceRate];
+  if (rates.every((rate) => rate == null)) return Number.POSITIVE_INFINITY;
+  return rates.reduce<number>((sum, rate) => sum + (rate ?? 0), 0);
 }
 
 export function queryStockConcentration(db: Database.Database, stockCode: string): StockConcentrationRow[] {

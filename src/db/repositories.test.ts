@@ -73,6 +73,33 @@ describe("repositories", () => {
     expect(result.offExchange.map((row) => row.code)).toEqual(["050025", "021778", "000834", "016532"]);
   });
 
+  it("uses lower visible fee cost as an off-exchange tie-breaker", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "000001", name: "高费率A", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "A", enabled: true },
+        { code: "000002", name: "低费率A", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "A", enabled: true }
+      ],
+      quotes: [],
+      limits: [
+        { fundCode: "000001", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "tiantian", dataDate: "2026-06-10", confidence: 0.9, syncRunId: "run-1" },
+        { fundCode: "000002", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "tiantian", dataDate: "2026-06-10", confidence: 0.9, syncRunId: "run-1" }
+      ],
+      fees: [
+        { fundCode: "000001", feeType: "subscription", rate: 0.0015, amountTierLowerBound: 0, channelScope: "agency", source: "tiantian", dataDate: "2026-06-10", syncRunId: "run-1" },
+        { fundCode: "000001", feeType: "management", rate: 0.01, channelScope: "agency", source: "tiantian", dataDate: "2026-06-10", syncRunId: "run-1" },
+        { fundCode: "000002", feeType: "subscription", rate: 0.0005, amountTierLowerBound: 0, channelScope: "agency", source: "tiantian", dataDate: "2026-06-10", syncRunId: "run-1" },
+        { fundCode: "000002", feeType: "management", rate: 0.005, channelScope: "agency", source: "tiantian", dataDate: "2026-06-10", syncRunId: "run-1" }
+      ],
+      holdings: []
+    });
+
+    const result = queryIndexComparison(db, "NASDAQ_100");
+
+    expect(result.offExchange.map((row) => row.code)).toEqual(["000002", "000001"]);
+  });
+
   it("keeps closing premium empty when same-date NAV is unavailable", () => {
     const db = createInMemoryDatabase();
     insertSnapshotBundle(db, {
