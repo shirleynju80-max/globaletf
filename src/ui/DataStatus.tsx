@@ -5,6 +5,7 @@ interface Props {
 }
 
 const LABELS: Array<{ key: keyof SyncStatusMap; label: string }> = [
+  { key: "fund", label: "基金" },
   { key: "quote", label: "行情" },
   { key: "purchaseLimit", label: "限购" },
   { key: "fee", label: "费率" },
