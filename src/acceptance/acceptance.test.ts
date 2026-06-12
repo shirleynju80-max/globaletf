@@ -25,6 +25,18 @@ describe("acceptance checks", () => {
     }));
   });
 
+  it("fails when off-exchange stock concentration rows lack purchase availability", () => {
+    const db = createAcceptanceDatabase({ limits: [] });
+
+    const result = runAcceptance(db);
+
+    expect(result.ok).toBe(false);
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      key: "stockConcentrationPurchaseAvailability",
+      ok: false
+    }));
+  });
+
   it("fails when another configured index target has no fund products", () => {
     const db = createAcceptanceDatabase({ includeOtherIndexTargets: false });
 
@@ -38,7 +50,11 @@ describe("acceptance checks", () => {
   });
 });
 
-function createAcceptanceDatabase(overrides: { holdings?: Parameters<typeof insertSnapshotBundle>[1]["holdings"]; includeOtherIndexTargets?: boolean } = {}) {
+function createAcceptanceDatabase(overrides: {
+  holdings?: Parameters<typeof insertSnapshotBundle>[1]["holdings"];
+  limits?: Parameters<typeof insertSnapshotBundle>[1]["limits"];
+  includeOtherIndexTargets?: boolean;
+} = {}) {
   const includeOtherIndexTargets = overrides.includeOtherIndexTargets ?? true;
   const db = createInMemoryDatabase();
   insertSnapshotBundle(db, {
@@ -56,13 +72,14 @@ function createAcceptanceDatabase(overrides: { holdings?: Parameters<typeof inse
       ] : [])
     ],
     quotes: [{ fundCode: "513100", closePrice: 1.23, closingPremiumDiscountRate: 0.012, turnover: 120000000, tradeDate: "2026-06-10", source: "eastmoney-on-exchange-quote", syncRunId: "acceptance-run" }],
-    limits: [{ fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "2026-06-11", confidence: 0.9, syncRunId: "acceptance-run" }],
+    limits: overrides.limits ?? [{ fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "2026-06-11", confidence: 0.9, syncRunId: "acceptance-run" }],
     fees: [
       { fundCode: "000834", feeType: "subscription", rate: 0.0012, amountTierLowerBound: 0, channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "2026-06-11", syncRunId: "acceptance-run" },
       { fundCode: "000834", feeType: "management", rate: 0.008, channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "2026-06-11", syncRunId: "acceptance-run" }
     ],
     holdings: overrides.holdings ?? [
-      { fundCode: "513100", stockCode: "NVDA", stockName: "NVIDIA Corp", navPercent: 9.2, reportPeriod: "2026Q1", source: "eastmoney-f10-jjcc", syncRunId: "acceptance-run" }
+      { fundCode: "513100", stockCode: "NVDA", stockName: "NVIDIA Corp", navPercent: 9.2, reportPeriod: "2026Q1", source: "eastmoney-f10-jjcc", syncRunId: "acceptance-run" },
+      { fundCode: "000834", stockCode: "NVDA", stockName: "NVIDIA Corp", navPercent: 8.8, reportPeriod: "2026Q1", source: "eastmoney-f10-jjcc", syncRunId: "acceptance-run" }
     ]
   });
   for (const area of ["fund", "quote", "purchaseLimit", "fee", "holding"] as const) {

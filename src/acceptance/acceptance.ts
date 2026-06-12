@@ -59,6 +59,13 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
       key: "stockConcentration",
       ok: stockConcentration.length > 0 && stockConcentration[0].navPercent > 0,
       message: `NVDA concentration rows=${stockConcentration.length}`
+    },
+    {
+      key: "stockConcentrationPurchaseAvailability",
+      ok: stockConcentration
+        .filter((row) => row.venue === "off_exchange")
+        .every((row) => row.purchaseStatus != null || row.limitAmountYuan != null),
+      message: `NVDA off-exchange purchase availability rows=${stockConcentration.filter((row) => row.venue === "off_exchange").length}`
     }
   ];
 
