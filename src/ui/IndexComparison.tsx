@@ -32,17 +32,23 @@ export function IndexComparison({ targetName, data }: Props) {
             </tr>
           </thead>
           <tbody>
-            {data.onExchange.map((row) => (
-              <tr key={row.code}>
-                <td className="mono">{row.code}</td>
-                <td>{row.name}</td>
-                <td>{row.closePrice}</td>
-                <td>{row.closingPremiumDiscountRate == null ? "同日净值缺失" : formatPercent(row.closingPremiumDiscountRate)}</td>
-                <td>{formatCurrency(row.turnover)}</td>
-                <td>{row.tradeDate}</td>
-                <td>{row.source}</td>
+            {data.onExchange.length === 0 ? (
+              <tr>
+                <td colSpan={7}>暂无{targetName}场内 ETF/LOF 数据</td>
               </tr>
-            ))}
+            ) : (
+              data.onExchange.map((row) => (
+                <tr key={row.code}>
+                  <td className="mono">{row.code}</td>
+                  <td>{row.name}</td>
+                  <td>{row.closePrice}</td>
+                  <td>{row.closingPremiumDiscountRate == null ? "同日净值缺失" : formatPercent(row.closingPremiumDiscountRate)}</td>
+                  <td>{formatCurrency(row.turnover)}</td>
+                  <td>{row.tradeDate}</td>
+                  <td>{row.source}</td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
@@ -65,20 +71,26 @@ export function IndexComparison({ targetName, data }: Props) {
             </tr>
           </thead>
           <tbody>
-            {data.offExchange.map((row) => (
-              <tr key={row.code}>
-                <td className="mono">{row.code}</td>
-                <td>{row.name}</td>
-                <td>{row.shareClass}</td>
-                <td>{formatStatus(row.status)}</td>
-                <td>{formatCurrency(row.limitAmountYuan)}</td>
-                <td>{formatOptionalPercent(row.defaultSubscriptionRate)}</td>
-                <td>{row.redemptionFeeSummary ?? "-"}</td>
-                <td>{formatOperationFees(row)}</td>
-                <td>{formatChannelScope(row.channelScope)}</td>
-                <td>{row.source}</td>
+            {data.offExchange.length === 0 ? (
+              <tr>
+                <td colSpan={10}>暂无{targetName}场外 A/C/F 数据</td>
               </tr>
-            ))}
+            ) : (
+              data.offExchange.map((row) => (
+                <tr key={row.code}>
+                  <td className="mono">{row.code}</td>
+                  <td>{row.name}</td>
+                  <td>{row.shareClass}</td>
+                  <td>{formatStatus(row.status)}</td>
+                  <td>{formatCurrency(row.limitAmountYuan)}</td>
+                  <td>{formatOptionalPercent(row.defaultSubscriptionRate)}</td>
+                  <td>{row.redemptionFeeSummary ?? "-"}</td>
+                  <td>{formatOperationFees(row)}</td>
+                  <td>{formatChannelScope(row.channelScope)}</td>
+                  <td>{row.source}</td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

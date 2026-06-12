@@ -61,4 +61,19 @@ describe("IndexComparison", () => {
     expect(screen.getByText("0-6天: 1.50%; 7-29天: 0.50%")).toBeInTheDocument();
     expect(screen.getByText("0.80% / 0.20% / 0.00%")).toBeInTheDocument();
   });
+
+  it("shows empty states for missing on-exchange and off-exchange rows", () => {
+    render(
+      <IndexComparison
+        targetName="标普500"
+        data={{
+          onExchange: [],
+          offExchange: []
+        }}
+      />
+    );
+
+    expect(screen.getByText("暂无标普500场内 ETF/LOF 数据")).toBeInTheDocument();
+    expect(screen.getByText("暂无标普500场外 A/C/F 数据")).toBeInTheDocument();
+  });
 });

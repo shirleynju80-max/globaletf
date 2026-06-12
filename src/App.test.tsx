@@ -34,7 +34,7 @@ describe("App", () => {
     await waitFor(() => {
       expect(fetchIndexComparison).toHaveBeenCalledWith("SP_500");
     });
-    expect(screen.getByRole("heading", { name: "标普500 同标的产品比较" })).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "标普500 同标的产品比较" })).toBeInTheDocument();
   });
 
   it("ignores stale index comparison responses after switching targets", async () => {
