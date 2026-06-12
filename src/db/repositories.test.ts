@@ -224,7 +224,7 @@ describe("repositories", () => {
       quotes: [],
       limits: [
         { fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "tiantian", dataDate: "2026-06-09", confidence: 0.7, syncRunId: "run-1" },
-        { fundCode: "000834", shareClass: "A", status: "open", channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "2026-06-10", confidence: 0.9, syncRunId: "run-2" }
+        { fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 5000, limitUnit: "per_day", channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "2026-06-10", confidence: 0.9, syncRunId: "run-2" }
       ],
       fees: [],
       holdings: [
@@ -238,7 +238,7 @@ describe("repositories", () => {
     const result = queryStockConcentration(db, "NVDA");
 
     expect(result).toEqual([
-      expect.objectContaining({ fundCode: "000834", fundName: "纳指100联接A", shareClass: "A", navPercent: 10.1, reportPeriod: "2026Q1", purchaseStatus: "open", limitAmountYuan: null }),
+      expect.objectContaining({ fundCode: "000834", fundName: "纳指100联接A", shareClass: "A", navPercent: 10.1, reportPeriod: "2026Q1", purchaseStatus: "limited", limitAmountYuan: 5000, limitUnit: "per_day" }),
       expect.objectContaining({ fundCode: "513100", fundName: "纳指ETF", shareClass: "ETF", navPercent: 9.2, reportPeriod: "2026Q1" })
     ]);
   });

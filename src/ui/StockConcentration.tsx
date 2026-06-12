@@ -158,10 +158,16 @@ function formatPurchaseStatus(status?: string | null): string {
   return "-";
 }
 
-function formatLimit(row: { purchaseStatus?: string | null; limitAmountYuan?: number | null }): string {
-  if (row.limitAmountYuan != null) return formatCurrency(row.limitAmountYuan);
+function formatLimit(row: { purchaseStatus?: string | null; limitAmountYuan?: number | null; limitUnit?: string | null }): string {
+  if (row.limitAmountYuan != null) return `${formatCurrency(row.limitAmountYuan)}${formatLimitUnit(row.limitUnit)}`;
   if (row.purchaseStatus === "open") return "开放申购";
   if (row.purchaseStatus === "limited") return "限额待确认";
   if (row.purchaseStatus === "suspended") return "暂停申购";
   return "-";
+}
+
+function formatLimitUnit(unit?: string | null): string {
+  if (unit === "per_day") return "/日";
+  if (unit === "per_order") return "/笔";
+  return "";
 }
