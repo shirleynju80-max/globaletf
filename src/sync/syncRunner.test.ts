@@ -169,9 +169,9 @@ describe("sync runner", () => {
     const result = queryIndexComparison(db, "NASDAQ_100");
 
     expect(result.offExchange.map((row) => [row.code, row.shareClass, row.limitAmountYuan])).toEqual([
-      ["000834", "A", 10],
+      ["021778", "F", 10000],
       ["016533", "C", 100],
-      ["021778", "F", 10000]
+      ["000834", "A", 10]
     ]);
   });
 

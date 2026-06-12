@@ -41,6 +41,37 @@ describe("repositories", () => {
     });
   });
 
+  it("orders index comparison rows by liquidity and purchase capacity", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "513100", name: "低成交ETF", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true },
+        { code: "159513", name: "高成交ETF", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true },
+        { code: "000834", name: "限额低A", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "A", enabled: true },
+        { code: "021778", name: "限额高F", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "F", enabled: true },
+        { code: "050025", name: "开放A", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "A", enabled: true },
+        { code: "016532", name: "未知C", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "C", enabled: true }
+      ],
+      quotes: [
+        { fundCode: "513100", closePrice: 1, closingPremiumDiscountRate: 0, turnover: 100, tradeDate: "2026-06-10", source: "eastmoney", syncRunId: "run-1" },
+        { fundCode: "159513", closePrice: 1, closingPremiumDiscountRate: 0, turnover: 1000, tradeDate: "2026-06-10", source: "eastmoney", syncRunId: "run-1" }
+      ],
+      limits: [
+        { fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "tiantian", dataDate: "2026-06-10", confidence: 0.9, syncRunId: "run-1" },
+        { fundCode: "021778", shareClass: "F", status: "limited", limitAmountYuan: 10000, limitUnit: "per_day", channelScope: "direct", source: "tiantian", dataDate: "2026-06-10", confidence: 0.9, syncRunId: "run-1" },
+        { fundCode: "050025", shareClass: "A", status: "open", channelScope: "agency", source: "tiantian", dataDate: "2026-06-10", confidence: 0.9, syncRunId: "run-1" }
+      ],
+      fees: [],
+      holdings: []
+    });
+
+    const result = queryIndexComparison(db, "NASDAQ_100");
+
+    expect(result.onExchange.map((row) => row.code)).toEqual(["159513", "513100"]);
+    expect(result.offExchange.map((row) => row.code)).toEqual(["050025", "021778", "000834", "016532"]);
+  });
+
   it("keeps closing premium empty when same-date NAV is unavailable", () => {
     const db = createInMemoryDatabase();
     insertSnapshotBundle(db, {

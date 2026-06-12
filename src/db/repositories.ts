@@ -249,9 +249,29 @@ export function queryIndexComparison(db: Database.Database, targetCode: string):
   enrichRowsWithFees(db, rows);
 
   return {
-    onExchange: rows.filter((row) => row.venue === "on_exchange"),
-    offExchange: rows.filter((row) => row.venue === "off_exchange")
+    onExchange: rows.filter((row) => row.venue === "on_exchange").sort(compareOnExchangeRows),
+    offExchange: rows.filter((row) => row.venue === "off_exchange").sort(compareOffExchangeRows)
   };
+}
+
+function compareOnExchangeRows(a: IndexComparisonRow, b: IndexComparisonRow): number {
+  const turnoverDiff = (b.turnover ?? -1) - (a.turnover ?? -1);
+  if (turnoverDiff !== 0) return turnoverDiff;
+  return a.code.localeCompare(b.code);
+}
+
+function compareOffExchangeRows(a: IndexComparisonRow, b: IndexComparisonRow): number {
+  const capacityRankDiff = purchaseCapacityRank(a) - purchaseCapacityRank(b);
+  if (capacityRankDiff !== 0) return capacityRankDiff;
+  const limitDiff = (b.limitAmountYuan ?? -1) - (a.limitAmountYuan ?? -1);
+  if (limitDiff !== 0) return limitDiff;
+  return a.code.localeCompare(b.code);
+}
+
+function purchaseCapacityRank(row: IndexComparisonRow): number {
+  if (row.status === "open") return 0;
+  if (row.limitAmountYuan != null) return 1;
+  return 2;
 }
 
 export function queryStockConcentration(db: Database.Database, stockCode: string): StockConcentrationRow[] {
