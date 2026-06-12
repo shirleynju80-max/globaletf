@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { insertSnapshotBundle, recordSyncStatus, type SyncStatusRow } from "../db/repositories";
 import { INDEX_TARGETS } from "../domain/targets";
-import type { Fund, FundHolding, FundQuote } from "../domain/types";
+import type { FeeTier, Fund, FundHolding, FundQuote, PurchaseLimit } from "../domain/types";
 import { createEastMoneyMultiTargetFundSearchProvider } from "../providers/eastmoneyFundSearch";
 import { createEastMoneyHoldingsProvider } from "../providers/eastmoneyHoldings";
 import { createEastMoneyOnExchangeQuoteProvider } from "../providers/eastmoneyOnExchangeQuotes";
@@ -52,7 +52,7 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
   let offExchangeDurationMs: number | undefined;
   if (areas.has("offExchange")) {
     const offExchangeStartedAt = now();
-    offExchangeSnapshot = await resolveOffExchangeSnapshot(options, fundSnapshot);
+    offExchangeSnapshot = await resolveOffExchangeSnapshot(db, options, fundSnapshot);
     offExchangeDurationMs = elapsedMs(now, offExchangeStartedAt);
   }
   let holdings: ResolvedData<FundHolding[]> | undefined;
@@ -151,7 +151,7 @@ async function resolveQuotes(db: Database.Database, options: DailySyncOptions, f
   }
 }
 
-async function resolveOffExchangeSnapshot(options: DailySyncOptions, fundSnapshot: ResolvedData<Fund[]>): Promise<ResolvedOffExchange> {
+async function resolveOffExchangeSnapshot(db: Database.Database, options: DailySyncOptions, fundSnapshot: ResolvedData<Fund[]>): Promise<ResolvedOffExchange> {
   const providers = options.offExchangeProviders ?? (options.useLiveProviders ? [createEastMoneyF10OffExchangeProvider(fundSnapshot.data)] : []);
   if (providers.length === 0) return resolvedOffExchangeOk({ limits: mockLimits, fees: mockFees }, "mock", true);
 
@@ -160,6 +160,10 @@ async function resolveOffExchangeSnapshot(options: DailySyncOptions, fundSnapsho
     return resolvedOffExchangeOk(result.data, successSource(result.providerResults), false);
   } catch (error) {
     const failure = providerFailure(error, providers);
+    const cached = queryCachedOffExchange(db, fundSnapshot.data);
+    if (cached.limits.length > 0 || cached.fees.length > 0) {
+      return resolvedOffExchangeFallback(cached, "local-cache", failure);
+    }
     if (!fundSnapshot.isFallback) return resolvedOffExchangeError(failure);
     return resolvedOffExchangeFallback({ limits: mockLimits, fees: mockFees }, "tiantian", failure);
   }
@@ -347,4 +351,71 @@ function queryCachedQuotes(db: Database.Database, funds: Fund[], excludeFundCode
         LIMIT 1
       )
   `).all(...fundCodes) as FundQuote[];
+}
+
+function queryCachedOffExchange(db: Database.Database, funds: Fund[]): OffExchangeFeeLimitSnapshot {
+  const fundCodes = funds
+    .filter((fund) => fund.enabled && fund.venue === "off_exchange")
+    .map((fund) => fund.code);
+  if (fundCodes.length === 0) return { limits: [], fees: [] };
+
+  const placeholders = fundCodes.map(() => "?").join(",");
+  const limits = db.prepare(`
+    SELECT
+      fund_code AS fundCode,
+      share_class AS shareClass,
+      status,
+      limit_amount_yuan AS limitAmountYuan,
+      limit_unit AS limitUnit,
+      channel_scope AS channelScope,
+      source,
+      data_date AS dataDate,
+      confidence,
+      sync_run_id AS syncRunId
+    FROM purchase_limits l
+    WHERE fund_code IN (${placeholders})
+      AND l.rowid = (
+        SELECT l2.rowid
+        FROM purchase_limits l2
+        WHERE l2.fund_code = l.fund_code
+        ORDER BY l2.data_date DESC,
+          CASE l2.source WHEN 'tiantian-f10-jjfl' THEN 0 WHEN 'tiantian' THEN 1 ELSE 2 END,
+          l2.confidence DESC
+        LIMIT 1
+      )
+  `).all(...fundCodes) as PurchaseLimit[];
+  const fees = db.prepare(`
+    SELECT
+      fund_code AS fundCode,
+      fee_type AS feeType,
+      rate,
+      min_holding_days AS minHoldingDays,
+      max_holding_days AS maxHoldingDays,
+      amount_tier_lower_bound AS amountTierLowerBound,
+      amount_tier_upper_bound AS amountTierUpperBound,
+      channel_scope AS channelScope,
+      source,
+      data_date AS dataDate,
+      sync_run_id AS syncRunId
+    FROM fund_fees f
+    WHERE fund_code IN (${placeholders})
+      AND f.data_date = (
+        SELECT f2.data_date
+        FROM fund_fees f2
+        WHERE f2.fund_code = f.fund_code
+        ORDER BY f2.data_date DESC,
+          CASE f2.source WHEN 'tiantian-f10-jjfl' THEN 0 WHEN 'tiantian' THEN 1 ELSE 2 END
+        LIMIT 1
+      )
+      AND f.source = (
+        SELECT f3.source
+        FROM fund_fees f3
+        WHERE f3.fund_code = f.fund_code
+        ORDER BY f3.data_date DESC,
+          CASE f3.source WHEN 'tiantian-f10-jjfl' THEN 0 WHEN 'tiantian' THEN 1 ELSE 2 END
+        LIMIT 1
+      )
+  `).all(...fundCodes) as FeeTier[];
+
+  return { limits, fees };
 }

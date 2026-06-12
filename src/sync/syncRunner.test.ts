@@ -323,6 +323,58 @@ describe("sync runner", () => {
     });
   });
 
+  it("falls back to cached off-exchange snapshots when off-exchange providers fail", async () => {
+    const db = createInMemoryDatabase();
+    const funds: Fund[] = [
+      { code: "000834", name: "大成纳斯达克100ETF联接(QDII)A", fundType: "指数型-海外股票", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "A", enabled: true }
+    ];
+    const fundProvider: DataProvider<Fund[]> = {
+      name: "test-fund-search",
+      fetch: async () => ({ ok: true, source: "test-fund-search", dataDate: "2026-06-09", confidence: 0.9, data: funds })
+    };
+    const initialOffExchangeProvider: DataProvider<OffExchangeFeeLimitSnapshot> = {
+      name: "initial-f10",
+      fetch: async () => ({
+        ok: true,
+        source: "initial-f10",
+        dataDate: "2026-06-09",
+        confidence: 0.9,
+        data: {
+          limits: [{ fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "initial-f10", dataDate: "2026-06-09", confidence: 0.9, syncRunId: "run-1" }],
+          fees: [{ fundCode: "000834", feeType: "subscription", rate: 0.0012, amountTierLowerBound: 0, channelScope: "agency", source: "initial-f10", dataDate: "2026-06-09", syncRunId: "run-1" }]
+        }
+      })
+    };
+    await runDailySync(db, { fundProviders: [fundProvider], offExchangeProviders: [initialOffExchangeProvider] });
+
+    const blockedOffExchangeProvider: DataProvider<OffExchangeFeeLimitSnapshot> = {
+      name: "blocked-f10",
+      fetch: async () => ({ ok: false, errorCategory: "anti_scraping", message: "blocked" })
+    };
+    await runDailySync(db, { fundProviders: [fundProvider], offExchangeProviders: [blockedOffExchangeProvider] });
+
+    const result = queryIndexComparison(db, "NASDAQ_100");
+    const status = querySyncStatus(db);
+
+    expect(result.offExchange[0]).toMatchObject({ code: "000834", limitAmountYuan: 1000, defaultSubscriptionRate: 0.0012, source: "initial-f10" });
+    expect(status.purchaseLimit).toMatchObject({
+      status: "fallback",
+      source: "local-cache",
+      dataDate: "2026-06-09",
+      itemCount: 1,
+      errorCategory: "anti_scraping",
+      message: "blocked"
+    });
+    expect(status.fee).toMatchObject({
+      status: "fallback",
+      source: "local-cache",
+      dataDate: "2026-06-09",
+      itemCount: 1,
+      errorCategory: "anti_scraping",
+      message: "blocked"
+    });
+  });
+
   it("does not attach stale mock limits to a discovered live fund universe", async () => {
     const db = createInMemoryDatabase();
     const funds: Fund[] = [
