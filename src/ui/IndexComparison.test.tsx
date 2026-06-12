@@ -18,6 +18,7 @@ describe("IndexComparison", () => {
     expect(screen.getByText(/仅供参考/)).toBeInTheDocument();
     expect(screen.getByText(/场内按成交额排序/)).toBeInTheDocument();
     expect(screen.getByText(/场外按开放申购和限额金额排序/)).toBeInTheDocument();
+    expect(screen.getByText(/申购费默认展示最低金额段/)).toBeInTheDocument();
   });
 
   it("shows a clear placeholder when same-date NAV is missing", () => {
