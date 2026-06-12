@@ -69,6 +69,14 @@ describe("App", () => {
     });
     expect(screen.getByText("标普ETF")).toBeInTheDocument();
   });
+
+  it("keeps fallback index comparison limit units visible", async () => {
+    vi.mocked(fetchIndexComparison).mockRejectedValue(new Error("API unavailable"));
+
+    render(<App />);
+
+    expect(await screen.findByText("1,000 元/日")).toBeInTheDocument();
+  });
 });
 
 function deferred<T>() {

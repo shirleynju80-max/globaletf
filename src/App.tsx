@@ -91,6 +91,6 @@ function fallbackIndexComparison(targetCode: string): { onExchange: any[]; offEx
   if (targetCode !== "NASDAQ_100") return { onExchange: [], offExchange: [] };
   return {
     onExchange: [{ code: "513100", name: "纳指ETF", closePrice: 1.23, closingPremiumDiscountRate: 0.012, turnover: 120000000, tradeDate: "2026-06-08", source: "mock" }],
-    offExchange: [{ code: "000834", name: "纳指100联接A", shareClass: "A", status: "limited", limitAmountYuan: 1000, channelScope: "agency", source: "mock" }]
+    offExchange: [{ code: "000834", name: "纳指100联接A", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "mock" }]
   };
 }
