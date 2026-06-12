@@ -64,6 +64,40 @@ describe("IndexComparison", () => {
     expect(screen.getByText("0.80% / 0.20% / 0.00%")).toBeInTheDocument();
   });
 
+  it("explains open and unknown off-exchange purchase limits", () => {
+    render(
+      <IndexComparison
+        targetName="标普500"
+        data={{
+          onExchange: [],
+          offExchange: [
+            {
+              code: "050025",
+              name: "博时标普500ETF联接A",
+              shareClass: "A",
+              status: "open",
+              limitAmountYuan: null,
+              channelScope: "agency",
+              source: "tiantian"
+            },
+            {
+              code: "016532",
+              name: "未知限额C",
+              shareClass: "C",
+              status: "limited",
+              limitAmountYuan: null,
+              channelScope: "agency",
+              source: "tiantian"
+            }
+          ]
+        }}
+      />
+    );
+
+    expect(screen.getByText("开放申购，未披露限额")).toBeInTheDocument();
+    expect(screen.getByText("限额待确认")).toBeInTheDocument();
+  });
+
   it("shows empty states for missing on-exchange and off-exchange rows", () => {
     render(
       <IndexComparison

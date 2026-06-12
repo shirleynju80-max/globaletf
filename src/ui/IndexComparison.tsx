@@ -82,7 +82,7 @@ export function IndexComparison({ targetName, data }: Props) {
                   <td>{row.name}</td>
                   <td>{row.shareClass}</td>
                   <td>{formatStatus(row.status)}</td>
-                  <td>{formatCurrency(row.limitAmountYuan)}</td>
+                  <td>{formatLimit(row)}</td>
                   <td>{formatOptionalPercent(row.defaultSubscriptionRate)}</td>
                   <td>{row.redemptionFeeSummary ?? "-"}</td>
                   <td>{formatOperationFees(row)}</td>
@@ -103,6 +103,14 @@ function formatCurrency(value?: number): string {
   if (value >= 100000000) return `${(value / 100000000).toFixed(2)} 亿`;
   if (value >= 10000) return `${(value / 10000).toFixed(2)} 万`;
   return `${value.toLocaleString("zh-CN")} 元`;
+}
+
+function formatLimit(row: { status?: string; limitAmountYuan?: number | null }): string {
+  if (row.limitAmountYuan != null) return formatCurrency(row.limitAmountYuan);
+  if (row.status === "open") return "开放申购，未披露限额";
+  if (row.status === "limited") return "限额待确认";
+  if (row.status === "suspended") return "暂停申购";
+  return "-";
 }
 
 function formatStatus(status?: string): string {
