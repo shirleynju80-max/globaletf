@@ -57,6 +57,8 @@ export interface StockConcentrationRow {
   holdingMarketValue?: number | null;
   reportPeriod: string;
   source: string;
+  purchaseStatus?: string | null;
+  limitAmountYuan?: number | null;
 }
 
 export type SyncStatusArea = "fund" | "quote" | "purchaseLimit" | "fee" | "holding";
@@ -289,9 +291,20 @@ export function queryStockConcentration(db: Database.Database, stockCode: string
       h.nav_percent AS navPercent,
       h.holding_market_value AS holdingMarketValue,
       h.report_period AS reportPeriod,
-      h.source
+      h.source,
+      l.status AS purchaseStatus,
+      l.limit_amount_yuan AS limitAmountYuan
     FROM fund_holdings h
     JOIN funds f ON f.code = h.fund_code
+    LEFT JOIN purchase_limits l ON l.rowid = (
+      SELECT l2.rowid
+      FROM purchase_limits l2
+      WHERE l2.fund_code = f.code
+      ORDER BY l2.data_date DESC,
+        CASE l2.source WHEN 'tiantian-f10-jjfl' THEN 0 WHEN 'tiantian' THEN 1 ELSE 2 END,
+        l2.confidence DESC
+      LIMIT 1
+    )
     WHERE f.enabled = 1
   `).all() as StockConcentrationRow[];
 

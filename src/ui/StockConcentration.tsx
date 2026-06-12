@@ -67,6 +67,9 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
               <th>市场</th>
               <th>持仓股票</th>
               <th>净值占比</th>
+              <th>持仓市值</th>
+              <th>申购状态</th>
+              <th>限额</th>
               <th>报告期</th>
               <th>来源</th>
             </tr>
@@ -74,7 +77,7 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
           <tbody>
             {rows.length === 0 ? (
               <tr>
-                <td colSpan={8}>暂无 {selectedStock} 持仓数据</td>
+                <td colSpan={11}>暂无 {selectedStock} 持仓数据</td>
               </tr>
             ) : (
               rows.map((row, index) => (
@@ -87,6 +90,9 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
                   <td>{formatVenue(row.venue)}</td>
                   <td>{row.stockCode || row.stockName}</td>
                   <td>{formatNavPercent(row.navPercent)}</td>
+                  <td>{formatCurrency(row.holdingMarketValue)}</td>
+                  <td>{formatPurchaseStatus(row.purchaseStatus)}</td>
+                  <td>{formatLimit(row)}</td>
                   <td>{row.reportPeriod}</td>
                   <td>{row.source}</td>
                 </tr>
@@ -107,4 +113,26 @@ function formatVenue(venue: string): string {
 
 function formatNavPercent(value: number): string {
   return `${value.toFixed(2)}%`;
+}
+
+function formatCurrency(value?: number | null): string {
+  if (value == null) return "-";
+  if (value >= 100000000) return `${(value / 100000000).toFixed(2)} 亿`;
+  if (value >= 10000) return `${(value / 10000).toFixed(2)} 万`;
+  return `${value.toLocaleString("zh-CN")} 元`;
+}
+
+function formatPurchaseStatus(status?: string | null): string {
+  if (status === "limited") return "限购";
+  if (status === "open") return "开放";
+  if (status === "suspended") return "暂停";
+  return "-";
+}
+
+function formatLimit(row: { purchaseStatus?: string | null; limitAmountYuan?: number | null }): string {
+  if (row.limitAmountYuan != null) return formatCurrency(row.limitAmountYuan);
+  if (row.purchaseStatus === "open") return "开放申购";
+  if (row.purchaseStatus === "limited") return "限额待确认";
+  if (row.purchaseStatus === "suspended") return "暂停申购";
+  return "-";
 }

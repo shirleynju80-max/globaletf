@@ -16,6 +16,9 @@ describe("StockConcentration", () => {
             stockCode: "NVDA",
             stockName: "英伟达",
             navPercent: 10.1,
+            holdingMarketValue: 120000000,
+            purchaseStatus: "limited",
+            limitAmountYuan: 1000,
             reportPeriod: "2026Q1",
             source: "eastmoney"
           }
@@ -26,6 +29,11 @@ describe("StockConcentration", () => {
 
     expect(screen.getAllByText("NVDA").length).toBeGreaterThan(0);
     expect(screen.getByText("纳指100联接A")).toBeInTheDocument();
+    expect(screen.getByText("申购状态")).toBeInTheDocument();
+    expect(screen.getByText("限额")).toBeInTheDocument();
+    expect(screen.getByText("限购")).toBeInTheDocument();
+    expect(screen.getByText("1,000 元")).toBeInTheDocument();
+    expect(screen.getByText("1.20 亿")).toBeInTheDocument();
     expect(screen.getByText("10.10%")).toBeInTheDocument();
     expect(screen.getByText("2026Q1")).toBeInTheDocument();
     expect(screen.getByText("当前查询：NVDA")).toBeInTheDocument();

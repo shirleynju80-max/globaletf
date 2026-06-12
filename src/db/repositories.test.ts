@@ -195,7 +195,10 @@ describe("repositories", () => {
         { code: "016532", name: "纳指100联接C", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "C", parentFundCode: "000834", enabled: false }
       ],
       quotes: [],
-      limits: [],
+      limits: [
+        { fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "tiantian", dataDate: "2026-06-09", confidence: 0.7, syncRunId: "run-1" },
+        { fundCode: "000834", shareClass: "A", status: "open", channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "2026-06-10", confidence: 0.9, syncRunId: "run-2" }
+      ],
       fees: [],
       holdings: [
         { fundCode: "513100", stockCode: "NVDA", stockName: "NVIDIA Corp", navPercent: 8.5, reportPeriod: "2025Q4", source: "eastmoney", syncRunId: "run-1" },
@@ -208,7 +211,7 @@ describe("repositories", () => {
     const result = queryStockConcentration(db, "NVDA");
 
     expect(result).toEqual([
-      expect.objectContaining({ fundCode: "000834", fundName: "纳指100联接A", shareClass: "A", navPercent: 10.1, reportPeriod: "2026Q1" }),
+      expect.objectContaining({ fundCode: "000834", fundName: "纳指100联接A", shareClass: "A", navPercent: 10.1, reportPeriod: "2026Q1", purchaseStatus: "open", limitAmountYuan: null }),
       expect.objectContaining({ fundCode: "513100", fundName: "纳指ETF", shareClass: "ETF", navPercent: 9.2, reportPeriod: "2026Q1" })
     ]);
   });
