@@ -2,6 +2,14 @@ import { useState, type FormEvent } from "react";
 import type { StockConcentrationRow } from "../db/repositories";
 
 const STOCK_OPTIONS = ["NVDA", "AAPL", "MSFT", "TSLA", "META"];
+const FILTER_OPTIONS = [
+  { key: "all", label: "全部" },
+  { key: "purchasable", label: "可申购" },
+  { key: "on_exchange", label: "场内" },
+  { key: "off_exchange", label: "场外" }
+] as const;
+
+type StockFilter = (typeof FILTER_OPTIONS)[number]["key"];
 
 interface Props {
   selectedStock: string;
@@ -11,6 +19,8 @@ interface Props {
 
 export function StockConcentration({ selectedStock, rows, onSelectStock }: Props) {
   const [customStock, setCustomStock] = useState("");
+  const [filter, setFilter] = useState<StockFilter>("all");
+  const filteredRows = rows.filter((row) => matchesFilter(row, filter));
 
   function submitCustomStock(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -56,6 +66,18 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
         </form>
       </div>
       <p className="query-chip">当前查询：{selectedStock}</p>
+      <div className="segmented-control stock-filter" aria-label="筛选持仓基金">
+        {FILTER_OPTIONS.map((option) => (
+          <button
+            key={option.key}
+            className={filter === option.key ? "active" : ""}
+            type="button"
+            onClick={() => setFilter(option.key)}
+          >
+            {option.label}
+          </button>
+        ))}
+      </div>
 
       <div className="table-wrap">
         <table>
@@ -75,12 +97,12 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
             </tr>
           </thead>
           <tbody>
-            {rows.length === 0 ? (
+            {filteredRows.length === 0 ? (
               <tr>
                 <td colSpan={11}>暂无 {selectedStock} 持仓数据</td>
               </tr>
             ) : (
-              rows.map((row, index) => (
+              filteredRows.map((row, index) => (
                 <tr key={`${row.fundCode}-${row.stockCode}-${row.reportPeriod}`}>
                   <td>{index + 1}</td>
                   <td>
@@ -103,6 +125,13 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
       </div>
     </section>
   );
+}
+
+function matchesFilter(row: StockConcentrationRow, filter: StockFilter): boolean {
+  if (filter === "on_exchange") return row.venue === "on_exchange";
+  if (filter === "off_exchange") return row.venue === "off_exchange";
+  if (filter === "purchasable") return row.venue === "on_exchange" || row.purchaseStatus === "open" || row.purchaseStatus === "limited";
+  return true;
 }
 
 function formatVenue(venue: string): string {

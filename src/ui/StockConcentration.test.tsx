@@ -55,6 +55,62 @@ describe("StockConcentration", () => {
     expect(onSelectStock).toHaveBeenCalledWith("GOOG");
   });
 
+  it("filters stock concentration rows by purchase availability and venue", () => {
+    render(
+      <StockConcentration
+        selectedStock="NVDA"
+        rows={[
+          {
+            fundCode: "000834",
+            fundName: "可申购场外",
+            venue: "off_exchange",
+            shareClass: "A",
+            stockCode: "NVDA",
+            stockName: "英伟达",
+            navPercent: 10.1,
+            purchaseStatus: "limited",
+            limitAmountYuan: 1000,
+            reportPeriod: "2026Q1",
+            source: "eastmoney"
+          },
+          {
+            fundCode: "513100",
+            fundName: "场内ETF",
+            venue: "on_exchange",
+            shareClass: "ETF",
+            stockCode: "NVDA",
+            stockName: "英伟达",
+            navPercent: 9.2,
+            reportPeriod: "2026Q1",
+            source: "eastmoney"
+          },
+          {
+            fundCode: "000001",
+            fundName: "暂停场外",
+            venue: "off_exchange",
+            shareClass: "A",
+            stockCode: "NVDA",
+            stockName: "英伟达",
+            navPercent: 8.8,
+            purchaseStatus: "suspended",
+            reportPeriod: "2026Q1",
+            source: "eastmoney"
+          }
+        ]}
+        onSelectStock={() => undefined}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "可申购" }));
+    expect(screen.getByText("可申购场外")).toBeInTheDocument();
+    expect(screen.getByText("场内ETF")).toBeInTheDocument();
+    expect(screen.queryByText("暂停场外")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "场内" }));
+    expect(screen.getByText("场内ETF")).toBeInTheDocument();
+    expect(screen.queryByText("可申购场外")).not.toBeInTheDocument();
+  });
+
   it("shows the selected stock in the empty state", () => {
     render(
       <StockConcentration
