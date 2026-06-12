@@ -27,6 +27,7 @@ function formatStatus(label: string, row?: SyncStatusRow): string {
 
   const parts = [
     `${label}：${formatStatusValue(row.status)}`,
+    row.status === "fallback" ? "使用备用/缓存数据" : null,
     row.dataDate,
     row.source,
     `${row.itemCount}条`,
