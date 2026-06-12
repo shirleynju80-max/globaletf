@@ -25,6 +25,7 @@ describe("DataStatus", () => {
     expect(screen.getByText(/耗时1.3s/)).toBeInTheDocument();
     expect(screen.getAllByText(/同步2026-06-10 17:30/)).toHaveLength(5);
     expect(screen.getByText(/限购：备用源/)).toBeInTheDocument();
+    expect(screen.getByText(/原因anti_scraping/)).toBeInTheDocument();
     expect(screen.getByText(/F10 blocked/)).toBeInTheDocument();
     expect(screen.getByText(/持仓：正常/)).toBeInTheDocument();
     expect(screen.getByText(/280条/)).toBeInTheDocument();

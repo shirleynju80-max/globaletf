@@ -34,6 +34,7 @@ function formatStatus(label: string, row?: SyncStatusRow): string {
     row.cachedItemCount == null ? null : `缓存${row.cachedItemCount}条`,
     row.durationMs == null ? null : `耗时${formatDuration(row.durationMs)}`,
     formatUpdatedAt(row.updatedAt),
+    row.errorCategory == null ? null : `原因${row.errorCategory}`,
     row.message
   ].filter(Boolean);
 
