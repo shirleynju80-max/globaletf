@@ -21,6 +21,14 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
   }));
   const nasdaqComparison = comparisons.find((entry) => entry.target.code === "NASDAQ_100")?.comparison ?? { onExchange: [], offExchange: [] };
   const stockConcentration = queryStockConcentration(db, "NVDA");
+  const nasdaqOffExchangeLimitRows = nasdaqComparison.offExchange.filter((row) => row.limitAmountYuan != null || row.status === "open" || row.status === "limited");
+  const nasdaqOffExchangeFeeRows = nasdaqComparison.offExchange.filter((row) =>
+    row.defaultSubscriptionRate != null ||
+    row.managementRate != null ||
+    row.custodianRate != null ||
+    row.salesServiceRate != null ||
+    row.redemptionFeeSummary != null
+  );
   const offExchangeStockConcentration = stockConcentration.filter((row) => row.venue === "off_exchange");
   const offExchangeStockLimitsWithAmounts = offExchangeStockConcentration.filter((row) => row.limitAmountYuan != null);
 
@@ -43,19 +51,23 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
     },
     {
       key: "offExchangeLimits",
-      ok: nasdaqComparison.offExchange.some((row) => row.limitAmountYuan != null || row.status === "open" || row.status === "limited"),
+      ok: nasdaqOffExchangeLimitRows.length > 0,
       message: "At least one off-exchange fund has purchase limit/status data"
     },
     {
+      key: "offExchangeLimitDataDates",
+      ok: nasdaqOffExchangeLimitRows.every((row) => Boolean(row.limitDataDate)),
+      message: `NASDAQ_100 off-exchange limit rows with dates=${nasdaqOffExchangeLimitRows.filter((row) => Boolean(row.limitDataDate)).length}/${nasdaqOffExchangeLimitRows.length}`
+    },
+    {
       key: "offExchangeFees",
-      ok: nasdaqComparison.offExchange.some((row) =>
-        row.defaultSubscriptionRate != null ||
-        row.managementRate != null ||
-        row.custodianRate != null ||
-        row.salesServiceRate != null ||
-        row.redemptionFeeSummary != null
-      ),
+      ok: nasdaqOffExchangeFeeRows.length > 0,
       message: "At least one off-exchange fund has fee data"
+    },
+    {
+      key: "offExchangeFeeDataDates",
+      ok: nasdaqOffExchangeFeeRows.every((row) => Boolean(row.feeDataDate)),
+      message: `NASDAQ_100 off-exchange fee rows with dates=${nasdaqOffExchangeFeeRows.filter((row) => Boolean(row.feeDataDate)).length}/${nasdaqOffExchangeFeeRows.length}`
     },
     {
       key: "stockConcentration",
