@@ -81,7 +81,7 @@ export function IndexComparison({ targetName, data }: Props) {
                   <td className="mono">{row.code}</td>
                   <td>{row.name}</td>
                   <td>{row.shareClass}</td>
-                  <td>{formatStatus(row.status)}</td>
+                  <td><StatusPill status={row.status} /></td>
                   <td>{formatLimit(row)}</td>
                   <td>{formatOptionalPercent(row.defaultSubscriptionRate)}</td>
                   <td>{row.redemptionFeeSummary ?? "-"}</td>
@@ -95,6 +95,15 @@ export function IndexComparison({ targetName, data }: Props) {
         </table>
       </div>
     </section>
+  );
+}
+
+function StatusPill({ status }: { status?: string }) {
+  const normalized = normalizeStatus(status);
+  return (
+    <span className={`status-pill status-pill-${normalized}`} data-status={normalized}>
+      {formatStatus(status)}
+    </span>
   );
 }
 
@@ -118,6 +127,11 @@ function formatStatus(status?: string): string {
   if (status === "open") return "开放";
   if (status === "suspended") return "暂停";
   return "未知";
+}
+
+function normalizeStatus(status?: string): "open" | "limited" | "suspended" | "unknown" {
+  if (status === "open" || status === "limited" || status === "suspended") return status;
+  return "unknown";
 }
 
 function formatOptionalPercent(value?: number | null): string {

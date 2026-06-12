@@ -65,7 +65,7 @@ describe("IndexComparison", () => {
   });
 
   it("explains open and unknown off-exchange purchase limits", () => {
-    render(
+    const { container } = render(
       <IndexComparison
         targetName="标普500"
         data={{
@@ -94,8 +94,42 @@ describe("IndexComparison", () => {
       />
     );
 
+    expect(container.querySelector('[data-status="open"]')).toHaveTextContent("开放");
+    expect(container.querySelector('[data-status="limited"]')).toHaveTextContent("限购");
     expect(screen.getByText("开放申购，未披露限额")).toBeInTheDocument();
     expect(screen.getByText("限额待确认")).toBeInTheDocument();
+  });
+
+  it("marks suspended and unknown purchase statuses distinctly", () => {
+    const { container } = render(
+      <IndexComparison
+        targetName="标普500"
+        data={{
+          onExchange: [],
+          offExchange: [
+            {
+              code: "000001",
+              name: "暂停申购A",
+              shareClass: "A",
+              status: "suspended",
+              channelScope: "agency",
+              source: "tiantian"
+            },
+            {
+              code: "000002",
+              name: "未知状态C",
+              shareClass: "C",
+              channelScope: "agency",
+              source: "tiantian"
+            }
+          ]
+        }}
+      />
+    );
+
+    expect(container.querySelector('[data-status="suspended"]')).toHaveTextContent("暂停");
+    expect(container.querySelector('[data-status="unknown"]')).toHaveTextContent("未知");
+    expect(screen.getByText("暂停申购")).toBeInTheDocument();
   });
 
   it("shows empty states for missing on-exchange and off-exchange rows", () => {

@@ -74,6 +74,41 @@ body {
   white-space: nowrap;
 }
 
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid #d2dce0;
+  border-radius: 999px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.status-pill-open {
+  border-color: #9fc9c3;
+  background: #e7f3f1;
+  color: #17635c;
+}
+
+.status-pill-limited {
+  border-color: #e3cfa6;
+  background: #fff5df;
+  color: #7b560b;
+}
+
+.status-pill-suspended {
+  border-color: #e5b7b7;
+  background: #fff0f0;
+  color: #8a2d2d;
+}
+
+.status-pill-unknown {
+  border-color: #d4dde1;
+  background: #f4f7f8;
+  color: #51616a;
+}
+
 .note {
   color: #5f6f7a;
 }
