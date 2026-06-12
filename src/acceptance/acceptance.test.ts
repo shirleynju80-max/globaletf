@@ -79,6 +79,20 @@ describe("acceptance checks", () => {
     }));
   });
 
+  it("fails when on-exchange rows lack turnover", () => {
+    const db = createAcceptanceDatabase({
+      quotes: [{ fundCode: "513100", closePrice: 1.23, closingPremiumDiscountRate: 0.012, turnover: undefined, tradeDate: "2026-06-10", source: "eastmoney-on-exchange-quote", syncRunId: "acceptance-run" }]
+    });
+
+    const result = runAcceptance(db);
+
+    expect(result.ok).toBe(false);
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      key: "onExchangeTurnover",
+      ok: false
+    }));
+  });
+
   it("fails when another configured index target has no fund products", () => {
     const db = createAcceptanceDatabase({ includeOtherIndexTargets: false });
 
@@ -93,6 +107,7 @@ describe("acceptance checks", () => {
 });
 
 function createAcceptanceDatabase(overrides: {
+  quotes?: Parameters<typeof insertSnapshotBundle>[1]["quotes"];
   holdings?: Parameters<typeof insertSnapshotBundle>[1]["holdings"];
   limits?: Parameters<typeof insertSnapshotBundle>[1]["limits"];
   fees?: Parameters<typeof insertSnapshotBundle>[1]["fees"];
@@ -114,7 +129,7 @@ function createAcceptanceDatabase(overrides: {
         { code: "012348", name: "华夏恒生科技ETF联接A", fundType: "QDII", venue: "off_exchange" as const, trackingTargetCode: "HSTECH", shareClass: "A" as const, enabled: true }
       ] : [])
     ],
-    quotes: [{ fundCode: "513100", closePrice: 1.23, closingPremiumDiscountRate: 0.012, turnover: 120000000, tradeDate: "2026-06-10", source: "eastmoney-on-exchange-quote", syncRunId: "acceptance-run" }],
+    quotes: overrides.quotes ?? [{ fundCode: "513100", closePrice: 1.23, closingPremiumDiscountRate: 0.012, turnover: 120000000, tradeDate: "2026-06-10", source: "eastmoney-on-exchange-quote", syncRunId: "acceptance-run" }],
     limits: overrides.limits ?? [{ fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "2026-06-11", confidence: 0.9, syncRunId: "acceptance-run" }],
     fees: overrides.fees ?? [
       { fundCode: "000834", feeType: "subscription", rate: 0.0012, amountTierLowerBound: 0, channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "2026-06-11", syncRunId: "acceptance-run" },

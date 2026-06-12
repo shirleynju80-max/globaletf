@@ -50,6 +50,11 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
       message: "At least one on-exchange ETF has close price and trade date"
     },
     {
+      key: "onExchangeTurnover",
+      ok: nasdaqComparison.onExchange.some((row) => row.turnover != null),
+      message: "At least one on-exchange ETF has turnover for liquidity context"
+    },
+    {
       key: "offExchangeLimits",
       ok: nasdaqOffExchangeLimitRows.length > 0,
       message: "At least one off-exchange fund has purchase limit/status data"
