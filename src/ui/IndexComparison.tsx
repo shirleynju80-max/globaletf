@@ -63,6 +63,7 @@ export function IndexComparison({ targetName, data }: Props) {
               <th>份额</th>
               <th>申购状态</th>
               <th>限额</th>
+              <th>可买性</th>
               <th>申购费</th>
               <th>赎回费</th>
               <th>运作费(管/托/销)</th>
@@ -73,7 +74,7 @@ export function IndexComparison({ targetName, data }: Props) {
           <tbody>
             {data.offExchange.length === 0 ? (
               <tr>
-                <td colSpan={10}>暂无{targetName}场外 A/C/F 数据</td>
+                <td colSpan={11}>暂无{targetName}场外 A/C/F 数据</td>
               </tr>
             ) : (
               data.offExchange.map((row) => (
@@ -83,6 +84,7 @@ export function IndexComparison({ targetName, data }: Props) {
                   <td>{row.shareClass}</td>
                   <td><StatusPill status={row.status} /></td>
                   <td>{formatLimit(row)}</td>
+                  <td>{formatPurchasePriority(row)}</td>
                   <td>{formatOptionalPercent(row.defaultSubscriptionRate)}</td>
                   <td>{row.redemptionFeeSummary ?? "-"}</td>
                   <td>{formatOperationFees(row)}</td>
@@ -120,6 +122,14 @@ function formatLimit(row: { status?: string; limitAmountYuan?: number | null }):
   if (row.status === "limited") return "限额待确认";
   if (row.status === "suspended") return "暂停申购";
   return "-";
+}
+
+function formatPurchasePriority(row: { status?: string; limitAmountYuan?: number | null; shareClass?: string | null }): string {
+  if (row.status === "open") return "优先";
+  if (row.status === "suspended") return "不可申购";
+  if (row.limitAmountYuan == null) return "待确认";
+  if (row.shareClass === "F" || row.limitAmountYuan >= 10000) return "高限额";
+  return "低限额";
 }
 
 function formatStatus(status?: string): string {

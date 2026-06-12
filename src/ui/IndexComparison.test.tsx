@@ -98,6 +98,43 @@ describe("IndexComparison", () => {
     expect(container.querySelector('[data-status="limited"]')).toHaveTextContent("限购");
     expect(screen.getByText("开放申购，未披露限额")).toBeInTheDocument();
     expect(screen.getByText("限额待确认")).toBeInTheDocument();
+    expect(screen.getByText("优先")).toBeInTheDocument();
+    expect(screen.getByText("待确认")).toBeInTheDocument();
+  });
+
+  it("summarizes off-exchange purchase priority", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [],
+          offExchange: [
+            {
+              code: "021778",
+              name: "广发纳指100ETF联接F",
+              shareClass: "F",
+              status: "limited",
+              limitAmountYuan: 10000,
+              channelScope: "direct",
+              source: "tiantian"
+            },
+            {
+              code: "000834",
+              name: "纳指100联接A",
+              shareClass: "A",
+              status: "limited",
+              limitAmountYuan: 1000,
+              channelScope: "agency",
+              source: "tiantian"
+            }
+          ]
+        }}
+      />
+    );
+
+    expect(screen.getByText("可买性")).toBeInTheDocument();
+    expect(screen.getByText("高限额")).toBeInTheDocument();
+    expect(screen.getByText("低限额")).toBeInTheDocument();
   });
 
   it("marks suspended and unknown purchase statuses distinctly", () => {
