@@ -21,6 +21,8 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
   }));
   const nasdaqComparison = comparisons.find((entry) => entry.target.code === "NASDAQ_100")?.comparison ?? { onExchange: [], offExchange: [] };
   const stockConcentration = queryStockConcentration(db, "NVDA");
+  const offExchangeStockConcentration = stockConcentration.filter((row) => row.venue === "off_exchange");
+  const offExchangeStockLimitsWithAmounts = offExchangeStockConcentration.filter((row) => row.limitAmountYuan != null);
 
   const checks: AcceptanceCheck[] = [
     checkStatus(status),
@@ -62,10 +64,13 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
     },
     {
       key: "stockConcentrationPurchaseAvailability",
-      ok: stockConcentration
-        .filter((row) => row.venue === "off_exchange")
-        .every((row) => row.purchaseStatus != null || row.limitAmountYuan != null),
-      message: `NVDA off-exchange purchase availability rows=${stockConcentration.filter((row) => row.venue === "off_exchange").length}`
+      ok: offExchangeStockConcentration.every((row) => row.purchaseStatus != null || row.limitAmountYuan != null),
+      message: `NVDA off-exchange purchase availability rows=${offExchangeStockConcentration.length}`
+    },
+    {
+      key: "stockConcentrationLimitUnits",
+      ok: offExchangeStockLimitsWithAmounts.every((row) => row.limitUnit === "per_day" || row.limitUnit === "per_order"),
+      message: `NVDA off-exchange numeric limit rows=${offExchangeStockLimitsWithAmounts.length}`
     }
   ];
 
