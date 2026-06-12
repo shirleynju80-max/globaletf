@@ -36,6 +36,7 @@ interface ResolvedOffExchange {
 
 export async function runDailySync(db: Database.Database, options: DailySyncOptions = {}): Promise<void> {
   const areas = new Set(options.areas?.length ? options.areas : ["fund", "quote", "offExchange", "holding"]);
+  const syncRunId = createDailySyncRunId();
   const now = options.now ?? Date.now;
   const fundStartedAt = now();
   const fundSnapshot = await resolveFunds(options);
@@ -63,12 +64,12 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
   }
 
   insertSnapshotBundle(db, {
-    syncRunId: "mock-run",
+    syncRunId,
     funds: fundSnapshot.data,
-    quotes: quotes?.data ?? [],
-    limits: offExchangeSnapshot?.data.limits ?? [],
-    fees: offExchangeSnapshot?.data.fees ?? [],
-    holdings: holdings?.data ?? []
+    quotes: stampSyncRunId(quotes?.data ?? [], syncRunId),
+    limits: stampSyncRunId(offExchangeSnapshot?.data.limits ?? [], syncRunId),
+    fees: stampSyncRunId(offExchangeSnapshot?.data.fees ?? [], syncRunId),
+    holdings: stampSyncRunId(holdings?.data ?? [], syncRunId)
   });
 
   const updatedAt = new Date().toISOString();
@@ -84,6 +85,14 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
   for (const status of statuses) {
     recordSyncStatus(db, { ...status, updatedAt });
   }
+}
+
+function createDailySyncRunId(date = new Date()): string {
+  return `daily-${date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "")}`;
+}
+
+function stampSyncRunId<T extends { syncRunId: string }>(rows: T[], syncRunId: string): T[] {
+  return rows.map((row) => ({ ...row, syncRunId }));
 }
 
 function elapsedMs(now: () => number, startedAt: number): number {

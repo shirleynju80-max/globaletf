@@ -33,6 +33,30 @@ describe("sync runner", () => {
     expect(result.offExchange.length).toBeGreaterThan(0);
   });
 
+  it("stamps snapshot rows with one timestamped daily sync run id", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-11T03:04:05.000Z"));
+    const db = createInMemoryDatabase();
+
+    try {
+      await runDailySync(db);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const rows = db.prepare(`
+      SELECT sync_run_id AS syncRunId FROM fund_quotes
+      UNION
+      SELECT sync_run_id AS syncRunId FROM purchase_limits
+      UNION
+      SELECT sync_run_id AS syncRunId FROM fund_fees
+      UNION
+      SELECT sync_run_id AS syncRunId FROM fund_holdings
+    `).all() as Array<{ syncRunId: string }>;
+
+    expect(rows).toEqual([{ syncRunId: "daily-20260611T030405Z" }]);
+  });
+
   it("uses off-exchange provider data when available", async () => {
     const db = createInMemoryDatabase();
     const provider: DataProvider<OffExchangeFeeLimitSnapshot> = {
