@@ -23,6 +23,7 @@ interface IndexComparisonRow {
   tradeDate?: string;
   status?: string;
   limitAmountYuan?: number;
+  limitUnit?: string | null;
   limitDataDate?: string | null;
   feeDataDate?: string | null;
   channelScope?: string;
@@ -229,6 +230,7 @@ export function queryIndexComparison(db: Database.Database, targetCode: string):
       COALESCE(q.source, l.source) AS source,
       l.status,
       l.limit_amount_yuan AS limitAmountYuan,
+      l.limit_unit AS limitUnit,
       l.data_date AS limitDataDate,
       l.channel_scope AS channelScope
     FROM funds f

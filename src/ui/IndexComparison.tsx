@@ -118,12 +118,18 @@ function formatCurrency(value?: number): string {
   return `${value.toLocaleString("zh-CN")} 元`;
 }
 
-function formatLimit(row: { status?: string; limitAmountYuan?: number | null }): string {
-  if (row.limitAmountYuan != null) return formatCurrency(row.limitAmountYuan);
+function formatLimit(row: { status?: string; limitAmountYuan?: number | null; limitUnit?: string | null }): string {
+  if (row.limitAmountYuan != null) return `${formatCurrency(row.limitAmountYuan)}${formatLimitUnit(row.limitUnit)}`;
   if (row.status === "open") return "开放申购，未披露限额";
   if (row.status === "limited") return "限额待确认";
   if (row.status === "suspended") return "暂停申购";
   return "-";
+}
+
+function formatLimitUnit(unit?: string | null): string {
+  if (unit === "per_day") return "/日";
+  if (unit === "per_order") return "/笔";
+  return "";
 }
 
 function formatPurchasePriority(row: { status?: string; limitAmountYuan?: number | null; shareClass?: string | null }): string {

@@ -46,6 +46,7 @@ describe("IndexComparison", () => {
             shareClass: "A",
             status: "limited",
             limitAmountYuan: 10,
+            limitUnit: "per_day",
             channelScope: "agency",
             defaultSubscriptionRate: 0.0012,
             redemptionFeeSummary: "0-6天: 1.50%; 7-29天: 0.50%",
@@ -60,6 +61,7 @@ describe("IndexComparison", () => {
     );
 
     expect(screen.getByText("申购费")).toBeInTheDocument();
+    expect(screen.getByText("10 元/日")).toBeInTheDocument();
     expect(screen.getByText("数据日期")).toBeInTheDocument();
     expect(screen.getByText("2026-06-09")).toBeInTheDocument();
     expect(screen.getByText("0.12%")).toBeInTheDocument();

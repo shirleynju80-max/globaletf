@@ -31,7 +31,7 @@ describe("repositories", () => {
     expect(result.onExchange).toHaveLength(1);
     expect(result.offExchange).toHaveLength(1);
     expect(result.offExchange[0].limitAmountYuan).toBe(1000);
-    expect(result.offExchange[0]).toMatchObject({ limitDataDate: "2026-06-09" });
+    expect(result.offExchange[0]).toMatchObject({ limitDataDate: "2026-06-09", limitUnit: "per_day" });
     expect(feeCount.count).toBe(7);
     expect(result.offExchange[0]).toMatchObject({
       defaultSubscriptionRate: 0.0012,
