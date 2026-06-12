@@ -15,7 +15,7 @@ export function IndexComparison({ targetName, data }: Props) {
         </div>
         <span className="source-pill">本地快照</span>
       </div>
-      <p className="note">昨日收盘折溢价仅供参考，不代表当前盘中折溢价。</p>
+      <p className="note">昨日收盘折溢价仅供参考，不代表当前盘中折溢价。场内按成交额排序，场外按开放申购和限额金额排序。</p>
 
       <h3>场内 ETF/LOF</h3>
       <div className="table-wrap">
