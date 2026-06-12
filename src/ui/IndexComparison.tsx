@@ -27,6 +27,7 @@ export function IndexComparison({ targetName, data }: Props) {
               <th>昨日收盘价</th>
               <th>昨日收盘折溢价</th>
               <th>成交额</th>
+              <th>交易成本提示</th>
               <th>日期</th>
               <th>来源</th>
             </tr>
@@ -34,7 +35,7 @@ export function IndexComparison({ targetName, data }: Props) {
           <tbody>
             {data.onExchange.length === 0 ? (
               <tr>
-                <td colSpan={7}>暂无{targetName}场内 ETF/LOF 数据</td>
+                <td colSpan={8}>暂无{targetName}场内 ETF/LOF 数据</td>
               </tr>
             ) : (
               data.onExchange.map((row) => (
@@ -44,6 +45,7 @@ export function IndexComparison({ targetName, data }: Props) {
                   <td>{row.closePrice}</td>
                   <td>{row.closingPremiumDiscountRate == null ? "同日净值缺失" : formatPercent(row.closingPremiumDiscountRate)}</td>
                   <td>{formatCurrency(row.turnover)}</td>
+                  <td>{formatTradingCostHint(row.turnover)}</td>
                   <td>{row.tradeDate}</td>
                   <td>{row.source}</td>
                 </tr>
@@ -130,6 +132,11 @@ function formatLimitUnit(unit?: string | null): string {
   if (unit === "per_day") return "/日";
   if (unit === "per_order") return "/笔";
   return "";
+}
+
+function formatTradingCostHint(turnover?: number | null): string {
+  if (turnover == null) return "成交额缺失";
+  return "看佣金/买卖价差，成交额越高通常越好";
 }
 
 function formatPurchasePriority(row: { status?: string; limitAmountYuan?: number | null; shareClass?: string | null }): string {

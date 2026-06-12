@@ -15,6 +15,8 @@ describe("IndexComparison", () => {
     );
 
     expect(screen.getByText("昨日收盘折溢价")).toBeInTheDocument();
+    expect(screen.getByText("交易成本提示")).toBeInTheDocument();
+    expect(screen.getByText("看佣金/买卖价差，成交额越高通常越好")).toBeInTheDocument();
     expect(screen.getByText(/仅供参考/)).toBeInTheDocument();
     expect(screen.getByText(/场内按成交额排序/)).toBeInTheDocument();
     expect(screen.getByText(/场外按开放申购和限额金额排序/)).toBeInTheDocument();
