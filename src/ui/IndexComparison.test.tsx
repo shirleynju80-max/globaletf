@@ -52,6 +52,7 @@ describe("IndexComparison", () => {
             managementRate: 0.008,
             custodianRate: 0.002,
             salesServiceRate: 0,
+            limitDataDate: "2026-06-09",
             source: "tiantian-f10-jjfl"
           }]
         }}
@@ -59,6 +60,8 @@ describe("IndexComparison", () => {
     );
 
     expect(screen.getByText("申购费")).toBeInTheDocument();
+    expect(screen.getByText("数据日期")).toBeInTheDocument();
+    expect(screen.getByText("2026-06-09")).toBeInTheDocument();
     expect(screen.getByText("0.12%")).toBeInTheDocument();
     expect(screen.getByText("0-6天: 1.50%; 7-29天: 0.50%")).toBeInTheDocument();
     expect(screen.getByText("0.80% / 0.20% / 0.00%")).toBeInTheDocument();

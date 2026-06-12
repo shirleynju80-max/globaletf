@@ -23,6 +23,8 @@ interface IndexComparisonRow {
   tradeDate?: string;
   status?: string;
   limitAmountYuan?: number;
+  limitDataDate?: string | null;
+  feeDataDate?: string | null;
   channelScope?: string;
   source?: string;
   defaultSubscriptionRate?: number | null;
@@ -225,6 +227,7 @@ export function queryIndexComparison(db: Database.Database, targetCode: string):
       COALESCE(q.source, l.source) AS source,
       l.status,
       l.limit_amount_yuan AS limitAmountYuan,
+      l.data_date AS limitDataDate,
       l.channel_scope AS channelScope
     FROM funds f
     LEFT JOIN fund_quotes q ON q.rowid = (
@@ -344,6 +347,7 @@ function enrichRowsWithFees(db: Database.Database, rows: IndexComparisonRow[]): 
     row.custodianRate = selectSingleRate(fundFees, "custodian");
     row.salesServiceRate = selectSingleRate(fundFees, "sales_service");
     row.redemptionFeeSummary = summarizeRedemptionFees(fundFees);
+    row.feeDataDate = selectPreferredFeeDataDate(fundFees);
   }
 }
 
@@ -374,6 +378,10 @@ function selectPreferredSnapshot(fees: FeeRow[], feeType: FeeType): FeeRow[] {
   if (!best) return [];
 
   return matching.filter((fee) => fee.dataDate === best.dataDate && fee.source === best.source);
+}
+
+function selectPreferredFeeDataDate(fees: FeeRow[]): string | null {
+  return fees.sort(compareFeeSnapshot)[0]?.dataDate ?? null;
 }
 
 function compareFeeSnapshot(a: FeeRow, b: FeeRow): number {

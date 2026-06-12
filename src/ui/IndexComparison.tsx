@@ -68,13 +68,14 @@ export function IndexComparison({ targetName, data }: Props) {
               <th>赎回费</th>
               <th>运作费(管/托/销)</th>
               <th>渠道范围</th>
+              <th>数据日期</th>
               <th>来源</th>
             </tr>
           </thead>
           <tbody>
             {data.offExchange.length === 0 ? (
               <tr>
-                <td colSpan={11}>暂无{targetName}场外 A/C/F 数据</td>
+                <td colSpan={12}>暂无{targetName}场外 A/C/F 数据</td>
               </tr>
             ) : (
               data.offExchange.map((row) => (
@@ -89,6 +90,7 @@ export function IndexComparison({ targetName, data }: Props) {
                   <td>{row.redemptionFeeSummary ?? "-"}</td>
                   <td>{formatOperationFees(row)}</td>
                   <td>{formatChannelScope(row.channelScope)}</td>
+                  <td>{formatDataDate(row)}</td>
                   <td>{row.source}</td>
                 </tr>
               ))
@@ -163,4 +165,8 @@ function formatChannelScope(scope?: string): string {
   if (scope === "direct") return "直销/特殊";
   if (scope === "special") return "特殊渠道";
   return "未知";
+}
+
+function formatDataDate(row: { limitDataDate?: string | null; feeDataDate?: string | null }): string {
+  return row.limitDataDate ?? row.feeDataDate ?? "-";
 }
