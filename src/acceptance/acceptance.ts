@@ -88,6 +88,11 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
       key: "stockConcentrationLimitUnits",
       ok: offExchangeStockLimitsWithAmounts.every((row) => row.limitUnit === "per_day" || row.limitUnit === "per_order"),
       message: `NVDA off-exchange numeric limit rows=${offExchangeStockLimitsWithAmounts.length}`
+    },
+    {
+      key: "stockConcentrationLimitDataDates",
+      ok: offExchangeStockLimitsWithAmounts.every((row) => Boolean(row.limitDataDate)),
+      message: `NVDA off-exchange numeric limit rows with dates=${offExchangeStockLimitsWithAmounts.filter((row) => Boolean(row.limitDataDate)).length}/${offExchangeStockLimitsWithAmounts.length}`
     }
   ];
 

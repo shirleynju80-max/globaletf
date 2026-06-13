@@ -51,6 +51,20 @@ describe("acceptance checks", () => {
     }));
   });
 
+  it("fails when off-exchange stock concentration limits lack data dates", () => {
+    const db = createAcceptanceDatabase({
+      limits: [{ fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "", confidence: 0.9, syncRunId: "acceptance-run" }]
+    });
+
+    const result = runAcceptance(db);
+
+    expect(result.ok).toBe(false);
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      key: "stockConcentrationLimitDataDates",
+      ok: false
+    }));
+  });
+
   it("fails when off-exchange limit rows lack data dates", () => {
     const db = createAcceptanceDatabase({
       limits: [{ fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "", confidence: 0.9, syncRunId: "acceptance-run" }]
