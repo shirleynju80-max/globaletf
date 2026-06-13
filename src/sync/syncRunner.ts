@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { insertSnapshotBundle, recordSyncStatus, type SyncStatusRow } from "../db/repositories";
+import { insertSnapshotBundle, recordProviderResults, recordSyncRun, recordSyncStatus, type ProviderResultRow, type SyncStatusRow } from "../db/repositories";
 import { INDEX_TARGETS } from "../domain/targets";
 import type { FeeTier, Fund, FundHolding, FundQuote, PurchaseLimit } from "../domain/types";
 import { createEastMoneyMultiTargetFundSearchProvider } from "../providers/eastmoneyFundSearch";
@@ -25,11 +25,13 @@ interface DailySyncOptions {
 interface ResolvedData<T> {
   data: T;
   isFallback: boolean;
+  providerResults: ProviderAttempt[];
   status: Omit<SyncStatusRow, "area" | "updatedAt">;
 }
 
 interface ResolvedOffExchange {
   data: OffExchangeFeeLimitSnapshot;
+  providerResults: ProviderAttempt[];
   limitStatus: Omit<SyncStatusRow, "area" | "updatedAt">;
   feeStatus: Omit<SyncStatusRow, "area" | "updatedAt">;
 }
@@ -37,6 +39,7 @@ interface ResolvedOffExchange {
 export async function runDailySync(db: Database.Database, options: DailySyncOptions = {}): Promise<void> {
   const areas = new Set(options.areas?.length ? options.areas : ["fund", "quote", "offExchange", "holding"]);
   const syncRunId = createDailySyncRunId();
+  const startedAt = new Date().toISOString();
   const now = options.now ?? Date.now;
   const fundStartedAt = now();
   const fundSnapshot = await resolveFunds(options);
@@ -85,6 +88,18 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
   for (const status of statuses) {
     recordSyncStatus(db, { ...status, updatedAt });
   }
+  recordSyncRun(db, {
+    syncRunId,
+    status: statuses.some((status) => status.status === "error") ? "failed" : "completed",
+    startedAt,
+    completedAt: new Date().toISOString()
+  });
+  recordProviderResults(db, [
+    ...toProviderResultRows(syncRunId, "fund", fundSnapshot.providerResults),
+    ...(quotes ? toProviderResultRows(syncRunId, "quote", quotes.providerResults) : []),
+    ...(offExchangeSnapshot ? toProviderResultRows(syncRunId, "offExchange", offExchangeSnapshot.providerResults) : []),
+    ...(holdings ? toProviderResultRows(syncRunId, "holding", holdings.providerResults) : [])
+  ]);
 }
 
 function createDailySyncRunId(date = new Date()): string {
@@ -116,9 +131,9 @@ async function resolveFunds(options: DailySyncOptions): Promise<ResolvedData<Fun
 
   try {
     const result = await runProviderChain(providers);
-    return resolvedOk(result.data, successSource(result.providerResults), successDataDate(result.providerResults), false);
+    return resolvedOk(result.data, successSource(result.providerResults), successDataDate(result.providerResults), false, undefined, undefined, result.providerResults);
   } catch (error) {
-    return resolvedFallback(mockFunds, "mock", latestFundDate(), providerFailure(error, providers));
+    return resolvedFallback(mockFunds, "mock", latestFundDate(), providerFailure(error, providers), undefined, undefined, providerAttempts(error));
   }
 }
 
@@ -136,18 +151,20 @@ async function resolveQuotes(db: Database.Database, options: DailySyncOptions, f
         latestQuoteDate(result.data) ?? successDataDate(result.providerResults),
         { source: null, errorCategory: null, message: null },
         result.data.length,
-        cachedQuotes.length
+        cachedQuotes.length,
+        result.providerResults
       );
     }
-    return resolvedOk(result.data, sourceFromQuotes(result.data) ?? successSource(result.providerResults), latestQuoteDate(result.data) ?? successDataDate(result.providerResults), false, result.data.length, 0);
+    return resolvedOk(result.data, sourceFromQuotes(result.data) ?? successSource(result.providerResults), latestQuoteDate(result.data) ?? successDataDate(result.providerResults), false, result.data.length, 0, result.providerResults);
   } catch (error) {
     const failure = providerFailure(error, providers);
+    const attempts = providerAttempts(error);
     const cachedQuotes = queryCachedQuotes(db, fundSnapshot.data);
     if (cachedQuotes.length > 0) {
-      return resolvedFallback(cachedQuotes, "local-cache", latestQuoteDate(cachedQuotes), failure, 0, cachedQuotes.length);
+      return resolvedFallback(cachedQuotes, "local-cache", latestQuoteDate(cachedQuotes), failure, 0, cachedQuotes.length, attempts);
     }
-    if (!fundSnapshot.isFallback) return resolvedError([], failure);
-    return resolvedFallback(mockQuotes, sourceFromQuotes(mockQuotes), latestQuoteDate(mockQuotes), failure);
+    if (!fundSnapshot.isFallback) return resolvedError([], failure, attempts);
+    return resolvedFallback(mockQuotes, sourceFromQuotes(mockQuotes), latestQuoteDate(mockQuotes), failure, undefined, undefined, attempts);
   }
 }
 
@@ -157,15 +174,16 @@ async function resolveOffExchangeSnapshot(db: Database.Database, options: DailyS
 
   try {
     const result = await runProviderChain(providers);
-    return resolvedOffExchangeOk(result.data, successSource(result.providerResults), false);
+    return resolvedOffExchangeOk(result.data, successSource(result.providerResults), false, result.providerResults);
   } catch (error) {
     const failure = providerFailure(error, providers);
+    const attempts = providerAttempts(error);
     const cached = queryCachedOffExchange(db, fundSnapshot.data);
     if (cached.limits.length > 0 || cached.fees.length > 0) {
-      return resolvedOffExchangeFallback(cached, "local-cache", failure);
+      return resolvedOffExchangeFallback(cached, "local-cache", failure, attempts);
     }
-    if (!fundSnapshot.isFallback) return resolvedOffExchangeError(failure);
-    return resolvedOffExchangeFallback({ limits: mockLimits, fees: mockFees }, "tiantian", failure);
+    if (!fundSnapshot.isFallback) return resolvedOffExchangeError(failure, attempts);
+    return resolvedOffExchangeFallback({ limits: mockLimits, fees: mockFees }, "tiantian", failure, attempts);
   }
 }
 
@@ -175,26 +193,29 @@ async function resolveHoldings(options: DailySyncOptions, fundSnapshot: Resolved
 
   try {
     const result = await runProviderChain(providers);
-    return resolvedOk(result.data, successSource(result.providerResults), latestHoldingPeriod(result.data) ?? successDataDate(result.providerResults), false);
+    return resolvedOk(result.data, successSource(result.providerResults), latestHoldingPeriod(result.data) ?? successDataDate(result.providerResults), false, undefined, undefined, result.providerResults);
   } catch (error) {
     const failure = providerFailure(error, providers);
-    if (!fundSnapshot.isFallback) return resolvedError([], failure);
-    return resolvedFallback(mockHoldings, sourceFromHoldings(mockHoldings), latestHoldingPeriod(mockHoldings), failure);
+    const attempts = providerAttempts(error);
+    if (!fundSnapshot.isFallback) return resolvedError([], failure, attempts);
+    return resolvedFallback(mockHoldings, sourceFromHoldings(mockHoldings), latestHoldingPeriod(mockHoldings), failure, undefined, undefined, attempts);
   }
 }
 
-function resolvedOk<T>(data: T[], source: string | null, dataDate: string | null, isFallback: boolean, freshItemCount?: number, cachedItemCount?: number): ResolvedData<T[]> {
+function resolvedOk<T>(data: T[], source: string | null, dataDate: string | null, isFallback: boolean, freshItemCount?: number, cachedItemCount?: number, providerResults: ProviderAttempt[] = []): ResolvedData<T[]> {
   return {
     data,
     isFallback,
+    providerResults,
     status: { status: "ok", source, dataDate, itemCount: data.length, freshItemCount, cachedItemCount }
   };
 }
 
-function resolvedFallback<T>(data: T[], source: string | null, dataDate: string | null, failure: ProviderFailure, freshItemCount?: number, cachedItemCount?: number): ResolvedData<T[]> {
+function resolvedFallback<T>(data: T[], source: string | null, dataDate: string | null, failure: ProviderFailure, freshItemCount?: number, cachedItemCount?: number, providerResults: ProviderAttempt[] = []): ResolvedData<T[]> {
   return {
     data,
     isFallback: true,
+    providerResults,
     status: {
       status: "fallback",
       source,
@@ -208,10 +229,11 @@ function resolvedFallback<T>(data: T[], source: string | null, dataDate: string 
   };
 }
 
-function resolvedError<T>(data: T[], failure: ProviderFailure): ResolvedData<T[]> {
+function resolvedError<T>(data: T[], failure: ProviderFailure, providerResults: ProviderAttempt[] = []): ResolvedData<T[]> {
   return {
     data,
     isFallback: false,
+    providerResults,
     status: {
       status: "error",
       source: failure.source,
@@ -223,17 +245,19 @@ function resolvedError<T>(data: T[], failure: ProviderFailure): ResolvedData<T[]
   };
 }
 
-function resolvedOffExchangeOk(data: OffExchangeFeeLimitSnapshot, source: string | null, isFallback: boolean): ResolvedOffExchange {
+function resolvedOffExchangeOk(data: OffExchangeFeeLimitSnapshot, source: string | null, isFallback: boolean, providerResults: ProviderAttempt[] = []): ResolvedOffExchange {
   return {
     data,
+    providerResults,
     limitStatus: { status: "ok", source, dataDate: latestLimitDate(data.limits), itemCount: data.limits.length },
     feeStatus: { status: "ok", source, dataDate: latestFeeDate(data.fees), itemCount: data.fees.length }
   };
 }
 
-function resolvedOffExchangeFallback(data: OffExchangeFeeLimitSnapshot, source: string | null, failure: ProviderFailure): ResolvedOffExchange {
+function resolvedOffExchangeFallback(data: OffExchangeFeeLimitSnapshot, source: string | null, failure: ProviderFailure, providerResults: ProviderAttempt[] = []): ResolvedOffExchange {
   return {
     data,
+    providerResults,
     limitStatus: {
       status: "fallback",
       source,
@@ -253,9 +277,10 @@ function resolvedOffExchangeFallback(data: OffExchangeFeeLimitSnapshot, source: 
   };
 }
 
-function resolvedOffExchangeError(failure: ProviderFailure): ResolvedOffExchange {
+function resolvedOffExchangeError(failure: ProviderFailure, providerResults: ProviderAttempt[] = []): ResolvedOffExchange {
   return {
     data: { limits: [], fees: [] },
+    providerResults,
     limitStatus: { status: "error", source: failure.source, dataDate: null, itemCount: 0, errorCategory: failure.errorCategory, message: failure.message },
     feeStatus: { status: "error", source: failure.source, dataDate: null, itemCount: 0, errorCategory: failure.errorCategory, message: failure.message }
   };
@@ -268,13 +293,31 @@ interface ProviderFailure {
 }
 
 function providerFailure(error: unknown, providers: Array<DataProvider<unknown>>): ProviderFailure {
-  const attempts = (error as { providerResults?: ProviderAttempt[] }).providerResults ?? [];
+  const attempts = providerAttempts(error);
   const failed = findLastAttempt(attempts, (attempt) => !attempt.ok);
   return {
     source: failed?.providerName ?? providers[0]?.name ?? null,
     errorCategory: failed?.errorCategory ?? null,
     message: failed?.message ?? (error instanceof Error ? error.message : null)
   };
+}
+
+function providerAttempts(error: unknown): ProviderAttempt[] {
+  return (error as { providerResults?: ProviderAttempt[] }).providerResults ?? [];
+}
+
+function toProviderResultRows(syncRunId: string, area: string, attempts: ProviderAttempt[]): ProviderResultRow[] {
+  return attempts.map((attempt, index) => ({
+    syncRunId,
+    area,
+    attemptOrder: index + 1,
+    providerName: attempt.providerName,
+    ok: attempt.ok,
+    dataDate: attempt.dataDate,
+    errorCategory: attempt.errorCategory,
+    message: attempt.message,
+    rawPayloadHash: attempt.rawPayloadHash
+  }));
 }
 
 function successSource(attempts: ProviderAttempt[]): string | null {

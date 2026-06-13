@@ -83,6 +83,25 @@ export interface SyncStatusRow {
 
 export type SyncStatusMap = Partial<Record<SyncStatusArea, SyncStatusRow>>;
 
+export interface SyncRunRow {
+  syncRunId: string;
+  status: "completed" | "failed";
+  startedAt: string;
+  completedAt?: string | null;
+}
+
+export interface ProviderResultRow {
+  syncRunId: string;
+  area: string;
+  attemptOrder: number;
+  providerName: string;
+  ok: boolean;
+  dataDate?: string | null;
+  errorCategory?: string | null;
+  message?: string | null;
+  rawPayloadHash?: string | null;
+}
+
 export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBundle): void {
   const insertFund = db.prepare(`
     INSERT OR REPLACE INTO funds (
@@ -183,6 +202,43 @@ export function recordSyncStatus(db: Database.Database, status: SyncStatusRow): 
     errorCategory: status.errorCategory ?? null,
     message: status.message ?? null
   });
+}
+
+export function recordSyncRun(db: Database.Database, row: SyncRunRow): void {
+  db.prepare(`
+    INSERT OR REPLACE INTO sync_runs (
+      sync_run_id, status, started_at, completed_at
+    ) VALUES (
+      @syncRunId, @status, @startedAt, @completedAt
+    )
+  `).run({
+    ...row,
+    completedAt: row.completedAt ?? null
+  });
+}
+
+export function recordProviderResults(db: Database.Database, rows: ProviderResultRow[]): void {
+  const insert = db.prepare(`
+    INSERT OR REPLACE INTO provider_results (
+      sync_run_id, area, attempt_order, provider_name, ok, data_date, error_category, message, raw_payload_hash
+    ) VALUES (
+      @syncRunId, @area, @attemptOrder, @providerName, @ok, @dataDate, @errorCategory, @message, @rawPayloadHash
+    )
+  `);
+  const tx = db.transaction(() => {
+    for (const row of rows) {
+      insert.run({
+        ...row,
+        ok: row.ok ? 1 : 0,
+        dataDate: row.dataDate ?? null,
+        errorCategory: row.errorCategory ?? null,
+        message: row.message ?? null,
+        rawPayloadHash: row.rawPayloadHash ?? null
+      });
+    }
+  });
+
+  tx();
 }
 
 export function querySyncStatus(db: Database.Database): SyncStatusMap {

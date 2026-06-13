@@ -297,6 +297,50 @@ describe("sync runner", () => {
     });
   });
 
+  it("records sync runs and provider attempts for audit", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-06-11T03:04:05.000Z"));
+    const db = createInMemoryDatabase();
+    const provider: DataProvider<FundQuote[]> = {
+      name: "blocked-quotes",
+      fetch: async () => ({ ok: false, errorCategory: "anti_scraping", message: "blocked by provider", rawPayloadHash: "hash-1" })
+    };
+
+    try {
+      await runDailySync(db, { quoteProviders: [provider] });
+    } finally {
+      vi.useRealTimers();
+    }
+
+    const runs = db.prepare(`
+      SELECT sync_run_id AS syncRunId, status, started_at AS startedAt, completed_at AS completedAt
+      FROM sync_runs
+    `).all();
+    const attempts = db.prepare(`
+      SELECT sync_run_id AS syncRunId, area, provider_name AS providerName, ok, error_category AS errorCategory, message, raw_payload_hash AS rawPayloadHash
+      FROM provider_results
+      ORDER BY area, provider_name
+    `).all();
+
+    expect(runs).toEqual([
+      {
+        syncRunId: "daily-20260611T030405Z",
+        status: "completed",
+        startedAt: "2026-06-11T03:04:05.000Z",
+        completedAt: "2026-06-11T03:04:05.000Z"
+      }
+    ]);
+    expect(attempts).toContainEqual({
+      syncRunId: "daily-20260611T030405Z",
+      area: "quote",
+      providerName: "blocked-quotes",
+      ok: 0,
+      errorCategory: "anti_scraping",
+      message: "blocked by provider",
+      rawPayloadHash: "hash-1"
+    });
+  });
+
   it("falls back to mock off-exchange snapshots when live providers fail", async () => {
     const db = createInMemoryDatabase();
     const provider: DataProvider<OffExchangeFeeLimitSnapshot> = {
@@ -395,5 +439,25 @@ describe("sync runner", () => {
     expect(result.offExchange).toEqual([
       expect.objectContaining({ code: "000834", source: null, limitAmountYuan: null })
     ]);
+  });
+
+  it("marks the sync run failed when a requested area has no usable snapshot", async () => {
+    const db = createInMemoryDatabase();
+    const funds: Fund[] = [
+      { code: "000834", name: "大成纳斯达克100ETF联接(QDII)A", fundType: "指数型-海外股票", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "A", enabled: true }
+    ];
+    const fundProvider: DataProvider<Fund[]> = {
+      name: "test-fund-search",
+      fetch: async () => ({ ok: true, source: "test-fund-search", dataDate: "2026-06-09", confidence: 0.9, data: funds })
+    };
+    const offExchangeProvider: DataProvider<OffExchangeFeeLimitSnapshot> = {
+      name: "blocked-f10",
+      fetch: async () => ({ ok: false, errorCategory: "anti_scraping", message: "blocked" })
+    };
+
+    await runDailySync(db, { areas: ["offExchange"], fundProviders: [fundProvider], offExchangeProviders: [offExchangeProvider] });
+
+    const run = db.prepare("SELECT status FROM sync_runs").get() as { status: string };
+    expect(run.status).toBe("failed");
   });
 });

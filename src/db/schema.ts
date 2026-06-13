@@ -78,6 +78,27 @@ export function migrate(db: Database.Database): void {
       message TEXT,
       updated_at TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS sync_runs (
+      sync_run_id TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      completed_at TEXT
+    );
+
+    CREATE TABLE IF NOT EXISTS provider_results (
+      sync_run_id TEXT NOT NULL,
+      area TEXT NOT NULL,
+      attempt_order INTEGER NOT NULL,
+      provider_name TEXT NOT NULL,
+      ok INTEGER NOT NULL,
+      data_date TEXT,
+      error_category TEXT,
+      message TEXT,
+      raw_payload_hash TEXT,
+      PRIMARY KEY (sync_run_id, area, attempt_order),
+      FOREIGN KEY (sync_run_id) REFERENCES sync_runs(sync_run_id)
+    );
   `);
 
   relaxLegacyQuotePremiumConstraint(db);
