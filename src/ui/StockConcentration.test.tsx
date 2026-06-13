@@ -20,6 +20,7 @@ describe("StockConcentration", () => {
             purchaseStatus: "limited",
             limitAmountYuan: 1000,
             limitUnit: "per_day",
+            limitDataDate: "2026-06-10",
             reportPeriod: "2026Q1",
             source: "eastmoney"
           }
@@ -32,8 +33,10 @@ describe("StockConcentration", () => {
     expect(screen.getByText("纳指100联接A")).toBeInTheDocument();
     expect(screen.getByText("申购状态")).toBeInTheDocument();
     expect(screen.getByText("限额")).toBeInTheDocument();
+    expect(screen.getByText("限购日期")).toBeInTheDocument();
     expect(screen.getByText("限购")).toBeInTheDocument();
     expect(screen.getByText("1,000 元/日")).toBeInTheDocument();
+    expect(screen.getByText("2026-06-10")).toBeInTheDocument();
     expect(screen.getByText("1.20 亿")).toBeInTheDocument();
     expect(screen.getByText("10.10%")).toBeInTheDocument();
     expect(screen.getByText("2026Q1")).toBeInTheDocument();

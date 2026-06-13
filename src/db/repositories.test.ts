@@ -238,7 +238,7 @@ describe("repositories", () => {
     const result = queryStockConcentration(db, "NVDA");
 
     expect(result).toEqual([
-      expect.objectContaining({ fundCode: "000834", fundName: "纳指100联接A", shareClass: "A", navPercent: 10.1, reportPeriod: "2026Q1", purchaseStatus: "limited", limitAmountYuan: 5000, limitUnit: "per_day" }),
+      expect.objectContaining({ fundCode: "000834", fundName: "纳指100联接A", shareClass: "A", navPercent: 10.1, reportPeriod: "2026Q1", purchaseStatus: "limited", limitAmountYuan: 5000, limitUnit: "per_day", limitDataDate: "2026-06-10" }),
       expect.objectContaining({ fundCode: "513100", fundName: "纳指ETF", shareClass: "ETF", navPercent: 9.2, reportPeriod: "2026Q1" })
     ]);
   });

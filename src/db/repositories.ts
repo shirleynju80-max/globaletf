@@ -61,6 +61,7 @@ export interface StockConcentrationRow {
   purchaseStatus?: string | null;
   limitAmountYuan?: number | null;
   limitUnit?: string | null;
+  limitDataDate?: string | null;
 }
 
 export type SyncStatusArea = "fund" | "quote" | "purchaseLimit" | "fee" | "holding";
@@ -305,7 +306,8 @@ export function queryStockConcentration(db: Database.Database, stockCode: string
       h.source,
       l.status AS purchaseStatus,
       l.limit_amount_yuan AS limitAmountYuan,
-      l.limit_unit AS limitUnit
+      l.limit_unit AS limitUnit,
+      l.data_date AS limitDataDate
     FROM fund_holdings h
     JOIN funds f ON f.code = h.fund_code
     LEFT JOIN purchase_limits l ON l.rowid = (

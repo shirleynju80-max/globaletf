@@ -92,6 +92,7 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
               <th>持仓市值</th>
               <th>申购状态</th>
               <th>限额</th>
+              <th>限购日期</th>
               <th>报告期</th>
               <th>来源</th>
             </tr>
@@ -99,7 +100,7 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
           <tbody>
             {filteredRows.length === 0 ? (
               <tr>
-                <td colSpan={11}>暂无 {selectedStock} 持仓数据</td>
+                <td colSpan={12}>暂无 {selectedStock} 持仓数据</td>
               </tr>
             ) : (
               filteredRows.map((row, index) => (
@@ -115,6 +116,7 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
                   <td>{formatCurrency(row.holdingMarketValue)}</td>
                   <td>{formatPurchaseStatus(row.purchaseStatus)}</td>
                   <td>{formatLimit(row)}</td>
+                  <td>{row.limitDataDate ?? "-"}</td>
                   <td>{row.reportPeriod}</td>
                   <td>{row.source}</td>
                 </tr>
