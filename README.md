@@ -36,3 +36,8 @@ On Linux or other cron-based environments, use a cron entry with the project dir
 ```
 
 The sync records per-area status for fund discovery, quotes, purchase limits, fees, and holdings. The UI status strip surfaces the provider, data date, row count, fallback state, error category, and last sync time.
+
+For provider-level troubleshooting, the local SQLite database also keeps:
+
+- `sync_runs`: one row per daily sync run, with completed or failed status.
+- `provider_results`: each provider attempt by area, including success/failure, data date, error category, message, and raw payload hash when available.
