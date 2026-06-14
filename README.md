@@ -40,4 +40,4 @@ The sync records per-area status for fund discovery, quotes, purchase limits, fe
 For provider-level troubleshooting, the local SQLite database also keeps:
 
 - `sync_runs`: one row per daily sync run, with completed or failed status.
-- `provider_results`: each provider attempt by area, including success/failure, data date, confidence, error category, message, and raw payload hash when available.
+- `provider_results`: each provider attempt by area, including success/failure, fetched time, data date, confidence, error category, message, and raw payload hash when available.
