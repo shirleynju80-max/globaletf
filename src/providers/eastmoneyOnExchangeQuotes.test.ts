@@ -62,8 +62,8 @@ describe("East Money on-exchange quote parser", () => {
 
   it("parses spot previous close quotes as a fallback", () => {
     expect(parseEastMoneySpotQuotes(spotPayload, "2026-06-10")).toEqual([
-      { fundCode: "159513", closePrice: 1.802, tradeDate: "2026-06-09" },
-      { fundCode: "513390", closePrice: 2.422, tradeDate: "2026-06-09" }
+      { fundCode: "159513", closePrice: 1.802, turnover: 108316295.612, tradeDate: "2026-06-09" },
+      { fundCode: "513390", closePrice: 2.422, turnover: 64897873, tradeDate: "2026-06-09" }
     ]);
   });
 });
@@ -140,7 +140,8 @@ describe("East Money on-exchange quote provider", () => {
     const fetchImpl = vi
       .fn()
       .mockResolvedValueOnce(new Response("blocked", { status: 502 }))
-      .mockResolvedValueOnce(new Response(JSON.stringify(spotPayload), { status: 200 }));
+      .mockResolvedValueOnce(new Response(JSON.stringify(spotPayload), { status: 200 }))
+      .mockResolvedValueOnce(new Response(`var apidata={content:"<table><tbody><tr><td>2026-06-09</td><td>1.8000</td></tr></tbody></table>",records:1};`, { status: 200 }));
     const provider = createEastMoneyOnExchangeQuoteProvider([onExchangeFunds[0]], {
       fetchImpl,
       dataDate: "2026-06-10",
@@ -151,16 +152,17 @@ describe("East Money on-exchange quote provider", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl).toHaveBeenCalledTimes(3);
     expect(fetchImpl.mock.calls[1][0]).toContain("push2.eastmoney.com/api/qt/ulist.np/get");
+    expect(fetchImpl.mock.calls[2][0]).toContain("code=159513");
     expect(result.data[0]).toMatchObject({
       fundCode: "159513",
       closePrice: 1.802,
+      turnover: 108316295.612,
       tradeDate: "2026-06-09",
-      closingPremiumDiscountRate: null,
       source: "eastmoney-on-exchange-spot"
     });
-    expect(result.data[0].turnover).toBeUndefined();
+    expect(result.data[0].closingPremiumDiscountRate).toBeCloseTo(0.0011, 4);
     expect(result.source).toBe("eastmoney-on-exchange-spot");
   });
 });

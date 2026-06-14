@@ -107,6 +107,20 @@ describe("acceptance checks", () => {
     }));
   });
 
+  it("fails when on-exchange previous-close reference rows lack source context", () => {
+    const db = createAcceptanceDatabase({
+      quotes: [{ fundCode: "513100", closePrice: 1.23, closingPremiumDiscountRate: null, turnover: 120000000, tradeDate: "2026-06-10", source: "", syncRunId: "acceptance-run" }]
+    });
+
+    const result = runAcceptance(db);
+
+    expect(result.ok).toBe(false);
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      key: "onExchangePremiumDiscountContext",
+      ok: false
+    }));
+  });
+
   it("fails when another configured index target has no fund products", () => {
     const db = createAcceptanceDatabase({ includeOtherIndexTargets: false });
 

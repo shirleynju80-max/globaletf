@@ -21,6 +21,7 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
   }));
   const nasdaqComparison = comparisons.find((entry) => entry.target.code === "NASDAQ_100")?.comparison ?? { onExchange: [], offExchange: [] };
   const stockConcentration = queryStockConcentration(db, "NVDA");
+  const nasdaqOnExchangePricedRows = nasdaqComparison.onExchange.filter((row) => row.closePrice != null);
   const nasdaqOffExchangeLimitRows = nasdaqComparison.offExchange.filter((row) => row.limitAmountYuan != null || row.status === "open" || row.status === "limited");
   const nasdaqOffExchangeFeeRows = nasdaqComparison.offExchange.filter((row) =>
     row.defaultSubscriptionRate != null ||
@@ -53,6 +54,11 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
       key: "onExchangeTurnover",
       ok: nasdaqComparison.onExchange.some((row) => row.turnover != null),
       message: "At least one on-exchange ETF has turnover for liquidity context"
+    },
+    {
+      key: "onExchangePremiumDiscountContext",
+      ok: nasdaqOnExchangePricedRows.length > 0 && nasdaqOnExchangePricedRows.every((row) => Boolean(row.tradeDate) && Boolean(row.source)),
+      message: `NASDAQ_100 priced on-exchange rows with previous-close context=${nasdaqOnExchangePricedRows.filter((row) => Boolean(row.tradeDate) && Boolean(row.source)).length}/${nasdaqOnExchangePricedRows.length}, premium rates=${nasdaqOnExchangePricedRows.filter((row) => row.closingPremiumDiscountRate != null).length}`
     },
     {
       key: "offExchangeLimits",

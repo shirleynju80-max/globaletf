@@ -64,10 +64,12 @@ export function parseEastMoneySpotQuotes(payload: unknown, dataDate: string): Sp
   return rows.flatMap((row) => {
     const fundCode = String(row.f12 ?? "");
     const closePrice = Number(row.f18);
+    const turnover = Number(row.f6);
     if (!fundCode || !Number.isFinite(closePrice)) return [];
     return [{
       fundCode,
       closePrice,
+      turnover: Number.isFinite(turnover) ? turnover : undefined,
       tradeDate
     }];
   });
@@ -129,15 +131,30 @@ async function fetchSpotQuotes(fetchImpl: typeof fetch, funds: Fund[], dataDate:
   });
   if (!response.ok) return [];
 
-  return parseEastMoneySpotQuotes(await response.json(), dataDate).map((quote) => ({
-    fundCode: quote.fundCode,
-    closePrice: quote.closePrice,
-    turnover: quote.turnover,
-    tradeDate: quote.tradeDate,
-    closingPremiumDiscountRate: null,
-    source: SPOT_SOURCE,
-    syncRunId
-  }));
+  const spotQuotes = parseEastMoneySpotQuotes(await response.json(), dataDate);
+  const requestedCodes = new Set(funds.map((fund) => fund.code));
+  const rows: FundQuote[] = [];
+
+  for (const quote of spotQuotes) {
+    if (!requestedCodes.has(quote.fundCode)) continue;
+    const nav = await safeFetchNav(fetchImpl, quote.fundCode);
+    rows.push({
+      fundCode: quote.fundCode,
+      closePrice: quote.closePrice,
+      turnover: quote.turnover,
+      tradeDate: quote.tradeDate,
+      closingPremiumDiscountRate: calculateClosingPremiumDiscount({
+        closePrice: quote.closePrice,
+        unitNav: nav?.unitNav ?? 0,
+        tradeDate: quote.tradeDate,
+        navDate: nav?.navDate ?? ""
+      }),
+      source: SPOT_SOURCE,
+      syncRunId
+    });
+  }
+
+  return rows;
 }
 
 async function fetchKline(fetchImpl: typeof fetch, code: string, beforeDate: string): Promise<KlineLatest> {
