@@ -15,6 +15,7 @@ export interface AcceptanceResult {
 
 export function runAcceptance(db: Database.Database): AcceptanceResult {
   const status = querySyncStatus(db);
+  const syncAudit = querySyncAuditSummary(db);
   const comparisons = INDEX_TARGETS.map((target) => ({
     target,
     comparison: queryIndexComparison(db, target.code)
@@ -35,6 +36,11 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
 
   const checks: AcceptanceCheck[] = [
     checkStatus(status),
+    {
+      key: "syncAudit",
+      ok: syncAudit.syncRunCount > 0 && syncAudit.providerResultCount > 0 && syncAudit.providerResultsWithFetchedAt === syncAudit.providerResultCount,
+      message: `sync runs=${syncAudit.syncRunCount}, provider attempts=${syncAudit.providerResultCount}, attempts with fetched time=${syncAudit.providerResultsWithFetchedAt}`
+    },
     ...comparisons.map(({ target, comparison }) => ({
       key: `indexComparison.${target.code}`,
       ok: comparison.onExchange.length > 0 && comparison.offExchange.length > 0,
@@ -105,6 +111,22 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
   return {
     ok: checks.every((check) => check.ok),
     checks
+  };
+}
+
+function querySyncAuditSummary(db: Database.Database): { syncRunCount: number; providerResultCount: number; providerResultsWithFetchedAt: number } {
+  const syncRuns = db.prepare("SELECT COUNT(*) AS count FROM sync_runs").get() as { count: number };
+  const providerResults = db.prepare(`
+    SELECT
+      COUNT(*) AS count,
+      SUM(CASE WHEN fetched_at IS NOT NULL AND fetched_at <> '' THEN 1 ELSE 0 END) AS withFetchedAt
+    FROM provider_results
+  `).get() as { count: number; withFetchedAt: number | null };
+
+  return {
+    syncRunCount: syncRuns.count,
+    providerResultCount: providerResults.count,
+    providerResultsWithFetchedAt: providerResults.withFetchedAt ?? 0
   };
 }
 

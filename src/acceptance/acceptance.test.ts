@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryDatabase } from "../db/database";
-import { insertSnapshotBundle, recordSyncStatus } from "../db/repositories";
+import { insertSnapshotBundle, recordProviderResults, recordSyncRun, recordSyncStatus } from "../db/repositories";
 import { runAcceptance } from "./acceptance";
 
 describe("acceptance checks", () => {
@@ -132,6 +132,18 @@ describe("acceptance checks", () => {
       ok: false
     }));
   });
+
+  it("fails when sync audit rows are missing", () => {
+    const db = createAcceptanceDatabase({ includeSyncAudit: false });
+
+    const result = runAcceptance(db);
+
+    expect(result.ok).toBe(false);
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      key: "syncAudit",
+      ok: false
+    }));
+  });
 });
 
 function createAcceptanceDatabase(overrides: {
@@ -140,8 +152,10 @@ function createAcceptanceDatabase(overrides: {
   limits?: Parameters<typeof insertSnapshotBundle>[1]["limits"];
   fees?: Parameters<typeof insertSnapshotBundle>[1]["fees"];
   includeOtherIndexTargets?: boolean;
+  includeSyncAudit?: boolean;
 } = {}) {
   const includeOtherIndexTargets = overrides.includeOtherIndexTargets ?? true;
+  const includeSyncAudit = overrides.includeSyncAudit ?? true;
   const db = createInMemoryDatabase();
   insertSnapshotBundle(db, {
     syncRunId: "acceptance-run",
@@ -178,6 +192,26 @@ function createAcceptanceDatabase(overrides: {
       durationMs: 100,
       updatedAt: "2026-06-11T03:00:00.000Z"
     });
+  }
+  if (includeSyncAudit) {
+    recordSyncRun(db, {
+      syncRunId: "acceptance-run",
+      status: "completed",
+      startedAt: "2026-06-11T03:00:00.000Z",
+      completedAt: "2026-06-11T03:00:01.000Z"
+    });
+    recordProviderResults(db, [
+      {
+        syncRunId: "acceptance-run",
+        area: "quote",
+        attemptOrder: 1,
+        providerName: "acceptance-provider",
+        ok: true,
+        confidence: 0.9,
+        fetchedAt: "2026-06-11T03:00:00.500Z",
+        dataDate: "2026-06-10"
+      }
+    ]);
   }
   return db;
 }
