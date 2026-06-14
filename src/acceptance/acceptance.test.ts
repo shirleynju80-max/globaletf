@@ -145,6 +145,24 @@ describe("acceptance checks", () => {
     }));
   });
 
+  it("fails when the latest sync run lacks provider attempts", () => {
+    const db = createAcceptanceDatabase();
+    recordSyncRun(db, {
+      syncRunId: "later-run",
+      status: "completed",
+      startedAt: "2026-06-11T04:00:00.000Z",
+      completedAt: "2026-06-11T04:00:01.000Z"
+    });
+
+    const result = runAcceptance(db);
+
+    expect(result.ok).toBe(false);
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      key: "syncAudit",
+      ok: false
+    }));
+  });
+
   it("fails when required sync statuses lack freshness metadata", () => {
     const db = createAcceptanceDatabase({
       syncStatusOverrides: {

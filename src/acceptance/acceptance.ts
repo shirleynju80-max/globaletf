@@ -39,8 +39,11 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
     checkStatusMetadata(status),
     {
       key: "syncAudit",
-      ok: syncAudit.syncRunCount > 0 && syncAudit.providerResultCount > 0 && syncAudit.providerResultsWithFetchedAt === syncAudit.providerResultCount,
-      message: `sync runs=${syncAudit.syncRunCount}, provider attempts=${syncAudit.providerResultCount}, attempts with fetched time=${syncAudit.providerResultsWithFetchedAt}`
+      ok: syncAudit.syncRunCount > 0 &&
+        syncAudit.latestRunStatus === "completed" &&
+        syncAudit.latestRunProviderResultCount > 0 &&
+        syncAudit.latestRunProviderResultsWithFetchedAt === syncAudit.latestRunProviderResultCount,
+      message: `sync runs=${syncAudit.syncRunCount}, latest status=${syncAudit.latestRunStatus ?? "none"}, latest provider attempts=${syncAudit.latestRunProviderResultCount}, attempts with fetched time=${syncAudit.latestRunProviderResultsWithFetchedAt}`
     },
     ...comparisons.map(({ target, comparison }) => ({
       key: `indexComparison.${target.code}`,
@@ -134,19 +137,32 @@ function checkStatusMetadata(status: ReturnType<typeof querySyncStatus>): Accept
   };
 }
 
-function querySyncAuditSummary(db: Database.Database): { syncRunCount: number; providerResultCount: number; providerResultsWithFetchedAt: number } {
+function querySyncAuditSummary(db: Database.Database): {
+  syncRunCount: number;
+  latestRunStatus: string | null;
+  latestRunProviderResultCount: number;
+  latestRunProviderResultsWithFetchedAt: number;
+} {
   const syncRuns = db.prepare("SELECT COUNT(*) AS count FROM sync_runs").get() as { count: number };
+  const latestRun = db.prepare(`
+    SELECT sync_run_id AS syncRunId, status
+    FROM sync_runs
+    ORDER BY started_at DESC
+    LIMIT 1
+  `).get() as { syncRunId: string; status: string } | undefined;
   const providerResults = db.prepare(`
     SELECT
       COUNT(*) AS count,
       SUM(CASE WHEN fetched_at IS NOT NULL AND fetched_at <> '' THEN 1 ELSE 0 END) AS withFetchedAt
     FROM provider_results
-  `).get() as { count: number; withFetchedAt: number | null };
+    WHERE sync_run_id = ?
+  `).get(latestRun?.syncRunId ?? "") as { count: number; withFetchedAt: number | null };
 
   return {
     syncRunCount: syncRuns.count,
-    providerResultCount: providerResults.count,
-    providerResultsWithFetchedAt: providerResults.withFetchedAt ?? 0
+    latestRunStatus: latestRun?.status ?? null,
+    latestRunProviderResultCount: providerResults.count,
+    latestRunProviderResultsWithFetchedAt: providerResults.withFetchedAt ?? 0
   };
 }
 
