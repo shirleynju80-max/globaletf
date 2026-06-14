@@ -32,6 +32,7 @@ export interface ProviderAttempt {
   providerName: string;
   ok: boolean;
   confidence?: number;
+  fetchedAt?: string;
   errorCategory?: ProviderErrorCategory;
   message?: string;
   dataDate?: string;

@@ -5,11 +5,13 @@ export async function runProviderChain<T>(providers: DataProvider<T>[]): Promise
 
   for (const provider of providers) {
     const result = await provider.fetch();
+    const fetchedAt = new Date().toISOString();
     if (result.ok) {
       providerResults.push({
         providerName: provider.name,
         ok: true,
         confidence: result.confidence,
+        fetchedAt,
         dataDate: result.dataDate,
         rawPayloadHash: result.rawPayloadHash
       });
@@ -19,6 +21,7 @@ export async function runProviderChain<T>(providers: DataProvider<T>[]): Promise
     providerResults.push({
       providerName: provider.name,
       ok: false,
+      fetchedAt,
       errorCategory: result.errorCategory,
       message: result.message,
       rawPayloadHash: result.rawPayloadHash

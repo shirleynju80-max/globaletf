@@ -50,7 +50,7 @@ describe("schema migration", () => {
     expect(info.map((column) => column.name)).toContain("duration_ms");
   });
 
-  it("adds confidence to legacy provider result tables", () => {
+  it("adds audit metadata to legacy provider result tables", () => {
     const db = new Database(":memory:");
     db.exec(`
       CREATE TABLE provider_results (
@@ -71,5 +71,6 @@ describe("schema migration", () => {
 
     const info = db.prepare("PRAGMA table_info(provider_results)").all() as Array<{ name: string }>;
     expect(info.map((column) => column.name)).toContain("confidence");
+    expect(info.map((column) => column.name)).toContain("fetched_at");
   });
 });

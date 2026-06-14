@@ -93,6 +93,7 @@ export function migrate(db: Database.Database): void {
       provider_name TEXT NOT NULL,
       ok INTEGER NOT NULL,
       confidence REAL,
+      fetched_at TEXT,
       data_date TEXT,
       error_category TEXT,
       message TEXT,
@@ -161,5 +162,8 @@ function addProviderResultColumns(db: Database.Database): void {
 
   if (!names.has("confidence")) {
     db.exec("ALTER TABLE provider_results ADD COLUMN confidence REAL");
+  }
+  if (!names.has("fetched_at")) {
+    db.exec("ALTER TABLE provider_results ADD COLUMN fetched_at TEXT");
   }
 }

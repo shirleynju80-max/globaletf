@@ -328,7 +328,7 @@ describe("sync runner", () => {
       FROM sync_runs
     `).all();
     const attempts = db.prepare(`
-      SELECT sync_run_id AS syncRunId, area, provider_name AS providerName, ok, confidence, error_category AS errorCategory, message, raw_payload_hash AS rawPayloadHash
+      SELECT sync_run_id AS syncRunId, area, provider_name AS providerName, ok, confidence, fetched_at AS fetchedAt, error_category AS errorCategory, message, raw_payload_hash AS rawPayloadHash
       FROM provider_results
       ORDER BY area, provider_name
     `).all();
@@ -347,6 +347,7 @@ describe("sync runner", () => {
       providerName: "blocked-quotes",
       ok: 0,
       confidence: null,
+      fetchedAt: "2026-06-11T03:04:05.000Z",
       errorCategory: "anti_scraping",
       message: "blocked by provider",
       rawPayloadHash: "hash-1"
@@ -357,6 +358,7 @@ describe("sync runner", () => {
       providerName: "backup-quotes",
       ok: 1,
       confidence: 0.75,
+      fetchedAt: "2026-06-11T03:04:05.000Z",
       errorCategory: null,
       message: null,
       rawPayloadHash: "hash-2"

@@ -314,6 +314,7 @@ function toProviderResultRows(syncRunId: string, area: string, attempts: Provide
     providerName: attempt.providerName,
     ok: attempt.ok,
     confidence: attempt.confidence,
+    fetchedAt: attempt.fetchedAt,
     dataDate: attempt.dataDate,
     errorCategory: attempt.errorCategory,
     message: attempt.message,
