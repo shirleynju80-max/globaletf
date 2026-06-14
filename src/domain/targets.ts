@@ -1,10 +1,27 @@
-import type { Target } from "./types";
+import type { Fund, Target } from "./types";
 
 export const INDEX_TARGETS: Target[] = [
   { code: "NASDAQ_100", name: "纳斯达克100", type: "index", aliases: ["nasdaq100", "纳指100", "纳斯达克 100"], region: "US", displayOrder: 1 },
   { code: "SP_500", name: "标普500", type: "index", aliases: ["s&p500", "sp500", "标普 500"], region: "US", displayOrder: 2 },
   { code: "NIKKEI_225", name: "日经225", type: "index", aliases: ["nikkei225", "日经 225"], region: "JP", displayOrder: 3 },
   { code: "HSTECH", name: "恒生科技", type: "index", aliases: ["hang seng tech", "恒科"], region: "HK", displayOrder: 4 }
+];
+
+export const INDEX_TARGET_FUND_SEEDS: Partial<Record<string, string[]>> = {
+  NASDAQ_100: ["159632"]
+};
+
+export const INDEX_TARGET_FUND_SEED_FUNDS: Fund[] = [
+  {
+    code: "159632",
+    name: "纳斯达克ETF华安",
+    fundType: "指数型-海外股票",
+    venue: "on_exchange",
+    fundCompany: "华安基金",
+    trackingTargetCode: "NASDAQ_100",
+    shareClass: "ETF",
+    enabled: true
+  }
 ];
 
 export const STOCK_TARGETS: Target[] = [

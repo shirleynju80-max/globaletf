@@ -1,7 +1,8 @@
 import type Database from "better-sqlite3";
 import { insertSnapshotBundle, recordProviderResults, recordSyncRun, recordSyncStatus, type ProviderResultRow, type SyncStatusRow } from "../db/repositories";
-import { INDEX_TARGETS } from "../domain/targets";
+import { INDEX_TARGETS, INDEX_TARGET_FUND_SEED_FUNDS, INDEX_TARGET_FUND_SEEDS } from "../domain/targets";
 import type { FeeTier, Fund, FundHolding, FundQuote, PurchaseLimit } from "../domain/types";
+import { STOCK_SCAN_FUNDS } from "../domain/stockScanUniverse";
 import { createEastMoneyMultiTargetFundSearchProvider } from "../providers/eastmoneyFundSearch";
 import { createEastMoneyHoldingsProvider } from "../providers/eastmoneyHoldings";
 import { createEastMoneyOnExchangeQuoteProvider } from "../providers/eastmoneyOnExchangeQuotes";
@@ -42,7 +43,7 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
   const startedAt = new Date().toISOString();
   const now = options.now ?? Date.now;
   const fundStartedAt = now();
-  const fundSnapshot = await resolveFunds(options);
+  const fundSnapshot = await resolveFunds(db, options);
   const fundDurationMs = elapsedMs(now, fundStartedAt);
   let quotes: ResolvedData<FundQuote[]> | undefined;
   let quoteDurationMs: number | undefined;
@@ -114,7 +115,7 @@ function elapsedMs(now: () => number, startedAt: number): number {
   return Math.max(0, Math.round(now() - startedAt));
 }
 
-async function resolveFunds(options: DailySyncOptions): Promise<ResolvedData<Fund[]>> {
+async function resolveFunds(db: Database.Database, options: DailySyncOptions): Promise<ResolvedData<Fund[]>> {
   const providers =
     options.fundProviders ??
     (options.useLiveProviders
@@ -122,19 +123,34 @@ async function resolveFunds(options: DailySyncOptions): Promise<ResolvedData<Fun
           targets: INDEX_TARGETS.map((target) => ({
             targetCode: target.code,
             targetName: target.name,
-            aliases: target.aliases
+            aliases: target.aliases,
+            seedFundCodes: INDEX_TARGET_FUND_SEEDS[target.code] ?? []
           }))
         })]
       : []);
 
-  if (providers.length === 0) return resolvedOk(mockFunds, "mock", latestFundDate(), true);
+  if (providers.length === 0) return resolvedOk(withCuratedFunds(mockFunds), "mock", latestFundDate(), true);
 
   try {
     const result = await runProviderChain(providers);
-    return resolvedOk(result.data, successSource(result.providerResults), successDataDate(result.providerResults), false, undefined, undefined, result.providerResults);
+    return resolvedOk(withCuratedFunds(result.data), successSource(result.providerResults), successDataDate(result.providerResults), false, undefined, undefined, result.providerResults);
   } catch (error) {
-    return resolvedFallback(mockFunds, "mock", latestFundDate(), providerFailure(error, providers), undefined, undefined, providerAttempts(error));
+    const failure = providerFailure(error, providers);
+    const attempts = providerAttempts(error);
+    const cachedFunds = withCuratedFunds(queryCachedFunds(db));
+    if (cachedFunds.length > STOCK_SCAN_FUNDS.length + INDEX_TARGET_FUND_SEED_FUNDS.length) {
+      return resolvedFallback(cachedFunds, "local-cache", latestFundDate(), failure, 0, cachedFunds.length, attempts);
+    }
+    return resolvedFallback(withCuratedFunds(mockFunds), "mock", latestFundDate(), failure, undefined, undefined, attempts);
   }
+}
+
+function withCuratedFunds(funds: Fund[]): Fund[] {
+  const byCode = new Map<string, Fund>();
+  for (const fund of [...STOCK_SCAN_FUNDS, ...INDEX_TARGET_FUND_SEED_FUNDS, ...funds]) {
+    byCode.set(fund.code, fund);
+  }
+  return [...byCode.values()];
 }
 
 async function resolveQuotes(db: Database.Database, options: DailySyncOptions, fundSnapshot: ResolvedData<Fund[]>): Promise<ResolvedData<FundQuote[]>> {
@@ -369,6 +385,32 @@ function latest(values: string[]): string | null {
   return values.filter(Boolean).sort().at(-1) ?? null;
 }
 
+function queryCachedFunds(db: Database.Database): Fund[] {
+  return db.prepare(`
+    SELECT
+      code,
+      name,
+      fund_type AS fundType,
+      venue,
+      fund_company AS fundCompany,
+      tracking_target_code AS trackingTargetCode,
+      share_class AS shareClass,
+      parent_fund_code AS parentFundCode,
+      enabled
+    FROM funds
+    WHERE enabled = 1
+  `).all().map((row) => {
+    const fund = row as Fund & { enabled: number; trackingTargetCode: string | null; fundCompany: string | null; parentFundCode: string | null };
+    return {
+      ...fund,
+      fundCompany: fund.fundCompany ?? undefined,
+      trackingTargetCode: fund.trackingTargetCode ?? undefined,
+      parentFundCode: fund.parentFundCode ?? undefined,
+      enabled: fund.enabled === 1
+    };
+  });
+}
+
 function queryCachedQuotes(db: Database.Database, funds: Fund[], excludeFundCodes = new Set<string>()): FundQuote[] {
   const fundCodes = funds
     .filter((fund) => fund.enabled && fund.venue === "on_exchange" && !excludeFundCodes.has(fund.code))
@@ -381,6 +423,8 @@ function queryCachedQuotes(db: Database.Database, funds: Fund[], excludeFundCode
       fund_code AS fundCode,
       close_price AS closePrice,
       closing_premium_discount_rate AS closingPremiumDiscountRate,
+      unit_nav AS unitNav,
+      nav_date AS navDate,
       turnover,
       trade_date AS tradeDate,
       source,

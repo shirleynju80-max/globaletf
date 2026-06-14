@@ -3,6 +3,7 @@ import type { DataProvider } from "./types";
 
 const SOURCE = "eastmoney-fundcode-search";
 const ENDPOINT = "https://fund.eastmoney.com/js/fundcode_search.js";
+const SUGGEST_ENDPOINT = "https://fundsuggest.eastmoney.com/FundSearch/api/FundSearchAPI.ashx";
 
 export interface FundSearchRow {
   code: string;
@@ -10,12 +11,15 @@ export interface FundSearchRow {
   name: string;
   type: string;
   pinyin: string;
+  fundCompany?: string;
+  otherName?: string;
 }
 
 interface TargetSelection {
   targetCode: string;
   targetName: string;
   aliases: string[];
+  seedFundCodes?: string[];
 }
 
 interface ProviderOptions extends TargetSelection {
@@ -33,13 +37,37 @@ export function parseEastMoneyFundSearch(script: string): FundSearchRow[] {
   return rows.map(([code, shortName, name, type, pinyin]) => ({ code, shortName, name, type, pinyin }));
 }
 
+export function parseEastMoneyFundSuggestions(payload: unknown): FundSearchRow[] {
+  const rows = (payload as { Datas?: Array<Record<string, unknown>> }).Datas ?? [];
+  return rows.flatMap((row) => {
+    const base = row.FundBaseInfo as Record<string, unknown> | undefined;
+    const code = String(row.CODE ?? row._id ?? base?.FCODE ?? "");
+    const name = stripHtml(String(row.NAME ?? base?.SHORTNAME ?? ""));
+    const pinyin = String(row.JP ?? "");
+    const type = String(base?.FTYPE ?? "");
+    if (!code || !name || !type) return [];
+    return [{
+      code,
+      shortName: pinyin,
+      name,
+      type,
+      pinyin,
+      fundCompany: stringOrUndefined(base?.JJGS),
+      otherName: String(base?.OTHERNAME ?? "")
+    }];
+  });
+}
+
 export function selectFundsForTarget(rows: FundSearchRow[], target: TargetSelection): Fund[] {
-  return rows
+  const deduped = new Map<string, Fund>();
+  for (const fund of rows
     .filter((row) => matchesTarget(row, target))
     .filter((row) => !isForeignCurrencyShare(row.name))
     .map((row) => toFund(row, target.targetCode))
-    .filter((fund): fund is Fund => fund != null)
-    .sort((a, b) => a.code.localeCompare(b.code));
+    .filter((fund): fund is Fund => fund != null)) {
+    deduped.set(fund.code, fund);
+  }
+  return [...deduped.values()].sort((a, b) => a.code.localeCompare(b.code));
 }
 
 export function selectFundsForTargets(rows: FundSearchRow[], targets: TargetSelection[]): Fund[] {
@@ -60,7 +88,11 @@ export function createEastMoneyFundSearchProvider(options: ProviderOptions): Dat
         });
         if (!response.ok) return { ok: false, errorCategory: "http", message: `${ENDPOINT} returned ${response.status}` };
 
-        const funds = selectFundsForTarget(parseEastMoneyFundSearch(await response.text()), options);
+        const rows = [
+          ...parseEastMoneyFundSearch(await response.text()),
+          ...await fetchSuggestionRows(fetchImpl, [options])
+        ];
+        const funds = selectFundsForTarget(rows, options);
         if (funds.length === 0) return { ok: false, errorCategory: "missing_fields", message: `No funds matched ${options.targetCode}` };
         return { ok: true, data: funds, source: SOURCE, dataDate: new Date().toISOString().slice(0, 10), confidence: 0.75 };
       } catch (error) {
@@ -84,7 +116,11 @@ export function createEastMoneyMultiTargetFundSearchProvider(options: MultiTarge
         });
         if (!response.ok) return { ok: false, errorCategory: "http", message: `${ENDPOINT} returned ${response.status}` };
 
-        const funds = selectFundsForTargets(parseEastMoneyFundSearch(await response.text()), options.targets);
+        const rows = [
+          ...parseEastMoneyFundSearch(await response.text()),
+          ...await fetchSuggestionRows(fetchImpl, options.targets)
+        ];
+        const funds = selectFundsForTargets(rows, options.targets);
         if (funds.length === 0) return { ok: false, errorCategory: "missing_fields", message: "No funds matched configured index targets" };
         return { ok: true, data: funds, source: SOURCE, dataDate: new Date().toISOString().slice(0, 10), confidence: 0.75 };
       } catch (error) {
@@ -95,8 +131,12 @@ export function createEastMoneyMultiTargetFundSearchProvider(options: MultiTarge
 }
 
 function matchesTarget(row: FundSearchRow, target: TargetSelection): boolean {
-  const haystack = normalize(`${row.name} ${row.shortName} ${row.pinyin}`);
-  return [target.targetName, ...target.aliases].some((alias) => haystack.includes(normalize(alias)));
+  if (target.seedFundCodes?.includes(row.code)) return true;
+  const haystack = normalize(`${row.name} ${row.shortName} ${row.pinyin} ${row.otherName ?? ""}`);
+  return [target.targetName, ...target.aliases].some((alias) => {
+    const normalizedAlias = normalize(alias);
+    return normalizedAlias.length > 0 && haystack.includes(normalizedAlias);
+  });
 }
 
 function isForeignCurrencyShare(name: string): boolean {
@@ -110,6 +150,7 @@ function toFund(row: FundSearchRow, targetCode: string): Fund | undefined {
     code: row.code,
     name: row.name,
     fundType: row.type,
+    fundCompany: row.fundCompany,
     venue: shareClass === "ETF" || shareClass === "LOF" ? "on_exchange" : "off_exchange",
     trackingTargetCode: targetCode,
     shareClass,
@@ -129,4 +170,39 @@ function inferShareClass(row: FundSearchRow): ShareClass {
 
 function normalize(value: string): string {
   return value.toUpperCase().replace(/\s+/g, "").replace(/纳指/g, "纳斯达克");
+}
+
+async function fetchSuggestionRows(fetchImpl: typeof fetch, targets: TargetSelection[]): Promise<FundSearchRow[]> {
+  const queries = uniqueQueries(targets.flatMap((target) => [target.targetName, ...target.aliases, ...(target.seedFundCodes ?? [])]));
+  const results = await Promise.all(queries.map((query) => fetchSuggestionRowsForQuery(fetchImpl, query)));
+  return results.flat();
+}
+
+async function fetchSuggestionRowsForQuery(fetchImpl: typeof fetch, query: string): Promise<FundSearchRow[]> {
+  const params = new URLSearchParams({ m: "1", key: query });
+  try {
+    const response = await fetchImpl(`${SUGGEST_ENDPOINT}?${params.toString()}`, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
+        Referer: "https://fund.eastmoney.com/"
+      }
+    });
+    if (!response.ok) return [];
+    return parseEastMoneyFundSuggestions(await response.json());
+  } catch {
+    return [];
+  }
+}
+
+function uniqueQueries(values: string[]): string[] {
+  return [...new Set(values.map((value) => value.trim()).filter(Boolean))];
+}
+
+function stripHtml(value: string): string {
+  return value.replace(/<[^>]+>/g, "");
+}
+
+function stringOrUndefined(value: unknown): string | undefined {
+  const text = String(value ?? "");
+  return text ? text : undefined;
 }

@@ -21,7 +21,7 @@ describe("sync runner", () => {
       vi.unstubAllGlobals();
     }
 
-    expect(queryIndexComparison(db, "NASDAQ_100").onExchange.map((row) => row.code)).toEqual(["159513"]);
+    expect(queryIndexComparison(db, "NASDAQ_100").onExchange.map((row) => row.code)).toEqual(["159513", "159632"]);
     expect(queryIndexComparison(db, "SP_500").onExchange.map((row) => row.code)).toEqual(["513500"]);
   });
 
@@ -199,6 +199,98 @@ describe("sync runner", () => {
     ]);
   });
 
+  it("adds curated stock scan funds to the fund snapshot for concentration holdings", async () => {
+    const db = createInMemoryDatabase();
+    const fundProvider: DataProvider<Fund[]> = {
+      name: "test-fund-search",
+      fetch: async () => ({
+        ok: true,
+        source: "test-fund-search",
+        dataDate: "2026-06-09",
+        confidence: 0.9,
+        data: [
+          { code: "159513", name: "纳斯达克100ETF大成", fundType: "指数型-海外股票", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true }
+        ]
+      })
+    };
+
+    await runDailySync(db, { areas: ["fund"], fundProviders: [fundProvider] });
+
+    const rows = db.prepare(`
+      SELECT code, name, tracking_target_code AS trackingTargetCode
+      FROM funds
+      WHERE code IN ('159513', '539002')
+      ORDER BY code
+    `).all();
+
+    expect(rows).toEqual([
+      { code: "159513", name: "纳斯达克100ETF大成", trackingTargetCode: "NASDAQ_100" },
+      { code: "539002", name: "建信新兴市场混合(QDII)A", trackingTargetCode: null }
+    ]);
+  });
+
+  it("persists stock scan universe funds without attaching them to an index target", async () => {
+    const db = createInMemoryDatabase();
+    const fundProvider: DataProvider<Fund[]> = {
+      name: "test-fund-search",
+      fetch: async () => ({
+        ok: true,
+        source: "test-fund-search",
+        dataDate: "2026-06-09",
+        confidence: 0.9,
+        data: [
+          { code: "159513", name: "纳斯达克100ETF大成", fundType: "指数型-海外股票", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true },
+          { code: "000834", name: "大成纳斯达克100ETF联接(QDII)A", fundType: "指数型-海外股票", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "A", enabled: true }
+        ]
+      })
+    };
+
+    await runDailySync(db, { areas: ["fund"], fundProviders: [fundProvider] });
+
+    const scanFund = db.prepare(`
+      SELECT code, name, venue, tracking_target_code AS trackingTargetCode, share_class AS shareClass, enabled
+      FROM funds
+      WHERE code = '539002'
+    `).get();
+    const comparison = queryIndexComparison(db, "NASDAQ_100");
+
+    expect(scanFund).toEqual({
+      code: "539002",
+      name: "建信新兴市场混合(QDII)A",
+      venue: "off_exchange",
+      trackingTargetCode: null,
+      shareClass: "A",
+      enabled: 1
+    });
+    expect([...comparison.onExchange, ...comparison.offExchange].map((row) => row.code)).not.toContain("539002");
+  });
+
+  it("includes stock scan universe holdings in stock concentration rankings", async () => {
+    const db = createInMemoryDatabase();
+    const holdingProvider: DataProvider<FundHolding[]> = {
+      name: "test-holdings",
+      fetch: async () => ({
+        ok: true,
+        source: "test-holdings",
+        dataDate: "2026Q1",
+        confidence: 0.9,
+        data: [
+          { fundCode: "539002", stockCode: "NVDA", stockName: "英伟达", navPercent: 11.5, reportPeriod: "2026Q1", source: "test-holdings", syncRunId: "run-1" }
+        ]
+      })
+    };
+
+    await runDailySync(db, { areas: ["holding"], holdingProviders: [holdingProvider] });
+
+    const rows = db.prepare(`
+      SELECT h.fund_code AS fundCode, h.stock_code AS stockCode, h.nav_percent AS navPercent
+      FROM fund_holdings h
+      WHERE h.fund_code = '539002'
+    `).all();
+
+    expect(rows).toEqual([{ fundCode: "539002", stockCode: "NVDA", navPercent: 11.5 }]);
+  });
+
   it("uses on-exchange quote provider data when available", async () => {
     const db = createInMemoryDatabase();
     const provider: DataProvider<FundQuote[]> = {
@@ -262,7 +354,8 @@ describe("sync runner", () => {
 
     expect(result.map((row) => [row.code, row.closePrice, row.source])).toEqual([
       ["159513", 1.8, "partial-quotes"],
-      ["513390", 2.3, "initial-quotes"]
+      ["513390", 2.3, "initial-quotes"],
+      ["159632", null, null]
     ]);
     expect(status).toMatchObject({
       status: "fallback",
@@ -271,6 +364,37 @@ describe("sync runner", () => {
       itemCount: 2,
       freshItemCount: 1,
       cachedItemCount: 1
+    });
+  });
+
+  it("falls back to cached fund universe when fund discovery fails", async () => {
+    const db = createInMemoryDatabase();
+    const cachedFunds: Fund[] = [
+      { code: "159632", name: "纳斯达克ETF华安", fundType: "指数型-海外股票", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true },
+      { code: "000834", name: "大成纳斯达克100ETF联接(QDII)A", fundType: "指数型-海外股票", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "A", enabled: true }
+    ];
+    const initialFundProvider: DataProvider<Fund[]> = {
+      name: "initial-funds",
+      fetch: async () => ({ ok: true, source: "initial-funds", dataDate: "2026-06-09", confidence: 0.9, data: cachedFunds })
+    };
+    await runDailySync(db, { areas: ["fund"], fundProviders: [initialFundProvider] });
+
+    const blockedFundProvider: DataProvider<Fund[]> = {
+      name: "blocked-funds",
+      fetch: async () => ({ ok: false, errorCategory: "network", message: "fetch failed" })
+    };
+    await runDailySync(db, { areas: ["fund"], fundProviders: [blockedFundProvider] });
+
+    const comparison = queryIndexComparison(db, "NASDAQ_100");
+    const status = querySyncStatus(db).fund;
+
+    expect([...comparison.onExchange, ...comparison.offExchange].map((row) => row.code)).toEqual(["159632", "000834"]);
+    expect(status).toMatchObject({
+      status: "fallback",
+      source: "local-cache",
+      itemCount: 3,
+      errorCategory: "network",
+      message: "fetch failed"
     });
   });
 

@@ -6,8 +6,12 @@ describe("calculateClosingPremiumDiscount", () => {
     expect(calculateClosingPremiumDiscount({ closePrice: 1.23, unitNav: 1.2, tradeDate: "2026-06-08", navDate: "2026-06-08" })).toBeCloseTo(0.025);
   });
 
-  it("does not fabricate a premium when NAV date does not match trade date", () => {
-    expect(calculateClosingPremiumDiscount({ closePrice: 1.23, unitNav: 1.2, tradeDate: "2026-06-08", navDate: "2026-06-07" })).toBeNull();
+  it("calculates previous-close premium with the latest disclosed NAV when NAV lags trade date", () => {
+    expect(calculateClosingPremiumDiscount({ closePrice: 1.23, unitNav: 1.2, tradeDate: "2026-06-08", navDate: "2026-06-07" })).toBeCloseTo(0.025);
+  });
+
+  it("does not calculate with a future NAV date", () => {
+    expect(calculateClosingPremiumDiscount({ closePrice: 1.23, unitNav: 1.2, tradeDate: "2026-06-08", navDate: "2026-06-09" })).toBeNull();
   });
 
   it("does not calculate when NAV is zero or invalid", () => {

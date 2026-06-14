@@ -8,12 +8,13 @@ describe("source catalog", () => {
     expect(OFF_EXCHANGE_SOURCES[0].parsingMode).toBe("html");
   });
 
-  it("uses daily close plus same-date NAV for on-exchange premium calculation", () => {
+  it("uses daily close plus latest disclosed NAV for on-exchange premium calculation", () => {
     expect(ON_EXCHANGE_SOURCES.map((source) => source.name)).toEqual([
       "akshare-eastmoney-etf-lof-hist",
       "akshare-eastmoney-open-fund-nav",
       "eastmoney-etf-spot-cross-check"
     ]);
+    expect(ON_EXCHANGE_SOURCES[1].notes).toContain("latest disclosed NAV");
   });
 
   it("uses fund_portfolio_hold_em as the first holdings source", () => {

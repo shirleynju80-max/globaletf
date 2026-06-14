@@ -30,6 +30,8 @@ export interface FundQuote {
   fundCode: string;
   closePrice: number;
   closingPremiumDiscountRate: number | null;
+  unitNav?: number | null;
+  navDate?: string | null;
   turnover?: number;
   tradeDate: string;
   source: string;

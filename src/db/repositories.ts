@@ -19,6 +19,8 @@ interface IndexComparisonRow {
   shareClass: string;
   closePrice?: number;
   closingPremiumDiscountRate: number | null;
+  unitNav?: number | null;
+  navDate?: string | null;
   turnover?: number;
   tradeDate?: string;
   status?: string;
@@ -115,9 +117,9 @@ export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBund
   const disableFundsForTarget = db.prepare("UPDATE funds SET enabled = 0 WHERE tracking_target_code = ?");
   const insertQuote = db.prepare(`
     INSERT OR REPLACE INTO fund_quotes (
-      fund_code, close_price, closing_premium_discount_rate, turnover, trade_date, source, sync_run_id
+      fund_code, close_price, closing_premium_discount_rate, unit_nav, nav_date, turnover, trade_date, source, sync_run_id
     ) VALUES (
-      @fundCode, @closePrice, @closingPremiumDiscountRate, @turnover, @tradeDate, @source, @syncRunId
+      @fundCode, @closePrice, @closingPremiumDiscountRate, @unitNav, @navDate, @turnover, @tradeDate, @source, @syncRunId
     )
   `);
   const insertLimit = db.prepare(`
@@ -158,7 +160,14 @@ export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBund
         enabled: fund.enabled ? 1 : 0
       });
     }
-    for (const quote of bundle.quotes) insertQuote.run(quote);
+    for (const quote of bundle.quotes) {
+      insertQuote.run({
+        ...quote,
+        unitNav: quote.unitNav ?? null,
+        navDate: quote.navDate ?? null,
+        turnover: quote.turnover ?? null
+      });
+    }
     for (const limit of bundle.limits) {
       insertLimit.run({
         ...limit,
@@ -287,6 +296,8 @@ export function queryIndexComparison(db: Database.Database, targetCode: string):
       f.share_class AS shareClass,
       q.close_price AS closePrice,
       q.closing_premium_discount_rate AS closingPremiumDiscountRate,
+      q.unit_nav AS unitNav,
+      q.nav_date AS navDate,
       q.turnover,
       q.trade_date AS tradeDate,
       COALESCE(q.source, l.source) AS source,

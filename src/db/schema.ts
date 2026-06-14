@@ -18,6 +18,8 @@ export function migrate(db: Database.Database): void {
       fund_code TEXT NOT NULL,
       close_price REAL NOT NULL,
       closing_premium_discount_rate REAL,
+      unit_nav REAL,
+      nav_date TEXT,
       turnover REAL,
       trade_date TEXT NOT NULL,
       source TEXT NOT NULL,
@@ -106,6 +108,7 @@ export function migrate(db: Database.Database): void {
   relaxLegacyQuotePremiumConstraint(db);
   addSyncStatusCountColumns(db);
   addProviderResultColumns(db);
+  addQuoteNavColumns(db);
 }
 
 function relaxLegacyQuotePremiumConstraint(db: Database.Database): void {
@@ -120,6 +123,8 @@ function relaxLegacyQuotePremiumConstraint(db: Database.Database): void {
       fund_code TEXT NOT NULL,
       close_price REAL NOT NULL,
       closing_premium_discount_rate REAL,
+      unit_nav REAL,
+      nav_date TEXT,
       turnover REAL,
       trade_date TEXT NOT NULL,
       source TEXT NOT NULL,
@@ -128,10 +133,10 @@ function relaxLegacyQuotePremiumConstraint(db: Database.Database): void {
     );
 
     INSERT INTO fund_quotes (
-      fund_code, close_price, closing_premium_discount_rate, turnover, trade_date, source, sync_run_id
+      fund_code, close_price, closing_premium_discount_rate, unit_nav, nav_date, turnover, trade_date, source, sync_run_id
     )
     SELECT
-      fund_code, close_price, closing_premium_discount_rate, turnover, trade_date, source, sync_run_id
+      fund_code, close_price, closing_premium_discount_rate, NULL, NULL, turnover, trade_date, source, sync_run_id
     FROM fund_quotes_legacy_notnull;
 
     DROP TABLE fund_quotes_legacy_notnull;
@@ -165,5 +170,20 @@ function addProviderResultColumns(db: Database.Database): void {
   }
   if (!names.has("fetched_at")) {
     db.exec("ALTER TABLE provider_results ADD COLUMN fetched_at TEXT");
+  }
+}
+
+function addQuoteNavColumns(db: Database.Database): void {
+  const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'fund_quotes'").get();
+  if (!table) return;
+
+  const columns = db.prepare("PRAGMA table_info(fund_quotes)").all() as Array<{ name: string }>;
+  const names = new Set(columns.map((column) => column.name));
+
+  if (!names.has("unit_nav")) {
+    db.exec("ALTER TABLE fund_quotes ADD COLUMN unit_nav REAL");
+  }
+  if (!names.has("nav_date")) {
+    db.exec("ALTER TABLE fund_quotes ADD COLUMN nav_date TEXT");
   }
 }

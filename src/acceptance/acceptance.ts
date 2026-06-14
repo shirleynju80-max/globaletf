@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { queryIndexComparison, queryStockConcentration, querySyncStatus } from "../db/repositories";
-import { INDEX_TARGETS } from "../domain/targets";
+import { INDEX_TARGETS, INDEX_TARGET_FUND_SEEDS } from "../domain/targets";
+import { STOCK_SCAN_FUNDS } from "../domain/stockScanUniverse";
 
 export interface AcceptanceCheck {
   key: string;
@@ -50,6 +51,17 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
       ok: comparison.onExchange.length > 0 && comparison.offExchange.length > 0,
       message: `${target.code} on-exchange=${comparison.onExchange.length}, off-exchange=${comparison.offExchange.length}`
     })),
+    ...comparisons.flatMap(({ target, comparison }) => {
+      const seedCodes = INDEX_TARGET_FUND_SEEDS[target.code] ?? [];
+      if (seedCodes.length === 0) return [];
+      const presentCodes = new Set([...comparison.onExchange, ...comparison.offExchange].map((row) => row.code));
+      const missingCodes = seedCodes.filter((code) => !presentCodes.has(code));
+      return [{
+        key: `indexComparison.${target.code}.coverageSeeds`,
+        ok: missingCodes.length === 0,
+        message: `${target.code} curated seed coverage missing=${missingCodes.join(",") || "none"}`
+      }];
+    }),
     {
       key: "indexComparison",
       ok: nasdaqComparison.onExchange.length > 0 && nasdaqComparison.offExchange.length > 0,
@@ -95,6 +107,14 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
       ok: stockConcentration.length > 0 && stockConcentration[0].navPercent > 0,
       message: `NVDA concentration rows=${stockConcentration.length}`
     },
+    ...STOCK_SCAN_FUNDS.map((fund) => {
+      const row = db.prepare("SELECT enabled FROM funds WHERE code = ?").get(fund.code) as { enabled: number } | undefined;
+      return {
+        key: `stockScanUniverse.${fund.code}`,
+        ok: row?.enabled === 1,
+        message: `${fund.code} stock scan fund enabled=${row?.enabled === 1 ? "yes" : "no"}`
+      };
+    }),
     {
       key: "stockConcentrationPurchaseAvailability",
       ok: offExchangeStockConcentration.every((row) => row.purchaseStatus != null || row.limitAmountYuan != null),

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createEastMoneyFundSearchProvider, createEastMoneyMultiTargetFundSearchProvider, parseEastMoneyFundSearch, selectFundsForTarget } from "./eastmoneyFundSearch";
+import { createEastMoneyFundSearchProvider, createEastMoneyMultiTargetFundSearchProvider, parseEastMoneyFundSearch, parseEastMoneyFundSuggestions, selectFundsForTarget } from "./eastmoneyFundSearch";
 
 const sampleScript = `var r = [
   ["000834","DCNSDK100ETFLJQDIIA","大成纳斯达克100ETF联接(QDII)A","指数型-海外股票","DACHENG"],
@@ -19,6 +19,31 @@ const multiTargetSampleScript = `var r = [
   ["513500","BP500ETF","标普500ETF","指数型-海外股票","BIAOPU"]
 ];`;
 
+const suggestionPayload = {
+  ErrCode: 0,
+  Datas: [
+    {
+      CODE: "159632",
+      NAME: "纳斯达克ETF华安",
+      JP: "NSDKETFHA",
+      FundBaseInfo: {
+        FTYPE: "指数型-海外股票",
+        JJGS: "华安基金"
+      }
+    },
+    {
+      CODE: "159630",
+      NAME: "A100ETF汇添富",
+      JP: "A100ETFHTF",
+      FundBaseInfo: {
+        FTYPE: "指数型-股票",
+        JJGS: "汇添富基金",
+        OTHERNAME: "汇添富中证100ETF,中证100ETF基金"
+      }
+    }
+  ]
+};
+
 describe("East Money fund search parser", () => {
   it("parses fundcode_search.js arrays", () => {
     const rows = parseEastMoneyFundSearch(sampleScript);
@@ -32,11 +57,35 @@ describe("East Money fund search parser", () => {
     });
   });
 
+  it("parses East Money suggestion search rows", () => {
+    expect(parseEastMoneyFundSuggestions(suggestionPayload)).toEqual([
+      {
+        code: "159632",
+        shortName: "NSDKETFHA",
+        name: "纳斯达克ETF华安",
+        type: "指数型-海外股票",
+        pinyin: "NSDKETFHA",
+        fundCompany: "华安基金",
+        otherName: ""
+      },
+      {
+        code: "159630",
+        shortName: "A100ETFHTF",
+        name: "A100ETF汇添富",
+        type: "指数型-股票",
+        pinyin: "A100ETFHTF",
+        fundCompany: "汇添富基金",
+        otherName: "汇添富中证100ETF,中证100ETF基金"
+      }
+    ]);
+  });
+
   it("selects Nasdaq 100 A/C/F off-exchange funds and on-exchange products", () => {
-    const funds = selectFundsForTarget(parseEastMoneyFundSearch(sampleScript), {
+    const funds = selectFundsForTarget([...parseEastMoneyFundSearch(sampleScript), ...parseEastMoneyFundSuggestions(suggestionPayload)], {
       targetCode: "NASDAQ_100",
       targetName: "纳斯达克100",
-      aliases: ["纳指100", "纳斯达克100"]
+      aliases: ["纳指100", "纳斯达克100"],
+      seedFundCodes: ["159632"]
     });
 
     expect(funds.map((fund) => [fund.code, fund.shareClass, fund.venue])).toEqual([
@@ -47,9 +96,11 @@ describe("East Money fund search parser", () => {
       ["016533", "C", "off_exchange"],
       ["021778", "F", "off_exchange"],
       ["159513", "ETF", "on_exchange"],
+      ["159632", "ETF", "on_exchange"],
       ["160213", "LOF", "on_exchange"]
     ]);
     expect(funds.find((fund) => fund.code === "000055")).toBeUndefined();
+    expect(funds.find((fund) => fund.code === "159630")).toBeUndefined();
   });
 });
 
@@ -75,15 +126,15 @@ describe("East Money fund search provider", () => {
     const fetchImpl = vi.fn(async () => new Response(multiTargetSampleScript, { status: 200 }));
     const provider = createEastMoneyMultiTargetFundSearchProvider({
       targets: [
-        { targetCode: "NASDAQ_100", targetName: "纳斯达克100", aliases: ["纳指100"] },
-        { targetCode: "SP_500", targetName: "标普500", aliases: ["标普 500"] }
+        { targetCode: "NASDAQ_100", targetName: "纳斯达克100", aliases: ["纳指100"], seedFundCodes: [] },
+        { targetCode: "SP_500", targetName: "标普500", aliases: ["标普 500"], seedFundCodes: [] }
       ],
       fetchImpl
     });
 
     const result = await provider.fetch();
 
-    expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(fetchImpl).toHaveBeenCalledTimes(5);
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.data.map((fund) => [fund.code, fund.trackingTargetCode])).toEqual([

@@ -118,6 +118,39 @@ describe("repositories", () => {
     expect(result.onExchange[0].closingPremiumDiscountRate).toBeNull();
   });
 
+  it("returns NAV reference metadata for on-exchange premium context", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "159659", name: "纳斯达克100ETF招商", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true }
+      ],
+      quotes: [{
+        fundCode: "159659",
+        closePrice: 2.236,
+        closingPremiumDiscountRate: 0.0366,
+        unitNav: 2.157,
+        navDate: "2026-06-11",
+        turnover: 417221586.4,
+        tradeDate: "2026-06-13",
+        source: "eastmoney-on-exchange-spot",
+        syncRunId: "run-1"
+      }],
+      limits: [],
+      fees: [],
+      holdings: []
+    });
+
+    const result = queryIndexComparison(db, "NASDAQ_100");
+
+    expect(result.onExchange[0]).toMatchObject({
+      code: "159659",
+      closingPremiumDiscountRate: 0.0366,
+      unitNav: 2.157,
+      navDate: "2026-06-11"
+    });
+  });
+
   it("prefers live on-exchange quotes over older mock quotes", () => {
     const db = createInMemoryDatabase();
     insertSnapshotBundle(db, {

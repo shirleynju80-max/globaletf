@@ -95,6 +95,8 @@ export function createEastMoneyOnExchangeQuoteProvider(funds: Fund[], options: P
             closePrice: kline.closePrice,
             turnover: kline.turnover,
             tradeDate: kline.tradeDate,
+            unitNav: nav?.unitNav ?? null,
+            navDate: nav?.navDate ?? null,
             closingPremiumDiscountRate: calculateClosingPremiumDiscount({
               closePrice: kline.closePrice,
               unitNav: nav?.unitNav ?? 0,
@@ -143,6 +145,8 @@ async function fetchSpotQuotes(fetchImpl: typeof fetch, funds: Fund[], dataDate:
       closePrice: quote.closePrice,
       turnover: quote.turnover,
       tradeDate: quote.tradeDate,
+      unitNav: nav?.unitNav ?? null,
+      navDate: nav?.navDate ?? null,
       closingPremiumDiscountRate: calculateClosingPremiumDiscount({
         closePrice: quote.closePrice,
         unitNav: nav?.unitNav ?? 0,

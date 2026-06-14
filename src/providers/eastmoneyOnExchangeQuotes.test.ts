@@ -98,7 +98,7 @@ describe("East Money on-exchange quote provider", () => {
     expect(result.data[0].closingPremiumDiscountRate).toBeCloseTo(0.025);
   });
 
-  it("keeps quote with null premium when NAV date does not match", async () => {
+  it("calculates quote premium with latest disclosed NAV when NAV date lags", async () => {
     const staleNavPayload = `var apidata={content:"<table><tbody><tr><td>2026-06-08</td><td>1.2000</td></tr></tbody></table>",records:1};`;
     const fetchImpl = vi
       .fn()
@@ -110,7 +110,12 @@ describe("East Money on-exchange quote provider", () => {
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.data[0].closingPremiumDiscountRate).toBeNull();
+    expect(result.data[0]).toMatchObject({
+      closingPremiumDiscountRate: expect.any(Number),
+      unitNav: 1.2,
+      navDate: "2026-06-08"
+    });
+    expect(result.data[0].closingPremiumDiscountRate).toBeCloseTo(0.025);
   });
 
   it("keeps close and turnover when NAV fetch fails", async () => {

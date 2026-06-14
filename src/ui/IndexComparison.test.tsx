@@ -8,13 +8,14 @@ describe("IndexComparison", () => {
       <IndexComparison
         targetName="纳斯达克100"
         data={{
-          onExchange: [{ code: "513100", name: "纳指ETF", closePrice: 1.23, closingPremiumDiscountRate: 0.012, turnover: 120000000, tradeDate: "2026-06-08", source: "eastmoney" }],
+          onExchange: [{ code: "513100", name: "纳指ETF", closePrice: 1.23, closingPremiumDiscountRate: 0.012, unitNav: 1.2, navDate: "2026-06-07", turnover: 120000000, tradeDate: "2026-06-08", source: "eastmoney" }],
           offExchange: [{ code: "000834", name: "纳指100联接A", shareClass: "A", status: "limited", limitAmountYuan: 1000, channelScope: "agency", source: "tiantian" }]
         }}
       />
     );
 
     expect(screen.getByText("昨日收盘折溢价")).toBeInTheDocument();
+    expect(screen.getByText("1.20%（按2026-06-07净值）")).toBeInTheDocument();
     expect(screen.getByText("交易成本提示")).toBeInTheDocument();
     expect(screen.getByText("看佣金/买卖价差，成交额越高通常越好")).toBeInTheDocument();
     expect(screen.getByText(/仅供参考/)).toBeInTheDocument();
@@ -23,7 +24,7 @@ describe("IndexComparison", () => {
     expect(screen.getByText(/申购费默认展示最低金额段/)).toBeInTheDocument();
   });
 
-  it("shows a clear placeholder when same-date NAV is missing", () => {
+  it("shows a clear placeholder when NAV is missing", () => {
     render(
       <IndexComparison
         targetName="纳斯达克100"
@@ -34,7 +35,31 @@ describe("IndexComparison", () => {
       />
     );
 
-    expect(screen.getByText("同日净值缺失")).toBeInTheDocument();
+    expect(screen.getByText("净值缺失")).toBeInTheDocument();
+  });
+
+  it("shows the NAV date used for a calculated premium", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [{
+            code: "159659",
+            name: "纳斯达克100ETF招商",
+            closePrice: 2.236,
+            closingPremiumDiscountRate: 0.0366,
+            unitNav: 2.157,
+            navDate: "2026-06-11",
+            turnover: 417221586.4,
+            tradeDate: "2026-06-13",
+            source: "eastmoney-on-exchange-spot"
+          }],
+          offExchange: []
+        }}
+      />
+    );
+
+    expect(screen.getByText("3.66%（按2026-06-11净值）")).toBeInTheDocument();
   });
 
   it("shows off-exchange fee cost columns", () => {

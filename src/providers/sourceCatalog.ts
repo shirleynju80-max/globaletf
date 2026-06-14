@@ -45,7 +45,7 @@ export const ON_EXCHANGE_SOURCES: SourceDescriptor[] = [
     endpointPattern: "ak.fund_open_fund_info_em(symbol, indicator='单位净值走势')",
     parsingMode: "library_adapter",
     provides: ["unit_nav", "nav_date"],
-    notes: "Use only when nav_date exactly matches trade_date; otherwise leave closing premium/discount null."
+    notes: "Use latest disclosed NAV for previous-close premium context. Show nav_date because cross-border ETF NAV often lags trade_date."
   },
   {
     name: "eastmoney-etf-spot-cross-check",

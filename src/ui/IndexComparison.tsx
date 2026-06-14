@@ -15,7 +15,7 @@ export function IndexComparison({ targetName, data }: Props) {
         </div>
         <span className="source-pill">本地快照</span>
       </div>
-      <p className="note">昨日收盘折溢价仅供参考，不代表当前盘中折溢价。场内按成交额排序，场外按开放申购和限额金额排序。申购费默认展示最低金额段。</p>
+      <p className="note">昨日收盘折溢价按最新披露单位净值计算，仅供参考，不代表当前盘中折溢价。场内按成交额排序，场外按开放申购和限额金额排序。申购费默认展示最低金额段。</p>
 
       <h3>场内 ETF/LOF</h3>
       <div className="table-wrap">
@@ -43,7 +43,7 @@ export function IndexComparison({ targetName, data }: Props) {
                   <td className="mono">{row.code}</td>
                   <td>{row.name}</td>
                   <td>{row.closePrice}</td>
-                  <td>{row.closingPremiumDiscountRate == null ? "同日净值缺失" : formatPercent(row.closingPremiumDiscountRate)}</td>
+                  <td>{formatPremiumDiscount(row)}</td>
                   <td>{formatCurrency(row.turnover)}</td>
                   <td>{formatTradingCostHint(row.turnover)}</td>
                   <td>{row.tradeDate}</td>
@@ -137,6 +137,13 @@ function formatLimitUnit(unit?: string | null): string {
 function formatTradingCostHint(turnover?: number | null): string {
   if (turnover == null) return "成交额缺失";
   return "看佣金/买卖价差，成交额越高通常越好";
+}
+
+function formatPremiumDiscount(row: { closingPremiumDiscountRate?: number | null; navDate?: string | null; tradeDate?: string | null }): string {
+  if (row.closingPremiumDiscountRate == null) return "净值缺失";
+  if (!row.navDate) return formatPercent(row.closingPremiumDiscountRate);
+  if (row.navDate === row.tradeDate) return `${formatPercent(row.closingPremiumDiscountRate)}（同日净值）`;
+  return `${formatPercent(row.closingPremiumDiscountRate)}（按${row.navDate}净值）`;
 }
 
 function formatPurchasePriority(row: { status?: string; limitAmountYuan?: number | null; shareClass?: string | null }): string {
