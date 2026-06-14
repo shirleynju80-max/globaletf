@@ -49,4 +49,27 @@ describe("schema migration", () => {
     const info = db.prepare("PRAGMA table_info(sync_status)").all() as Array<{ name: string }>;
     expect(info.map((column) => column.name)).toContain("duration_ms");
   });
+
+  it("adds confidence to legacy provider result tables", () => {
+    const db = new Database(":memory:");
+    db.exec(`
+      CREATE TABLE provider_results (
+        sync_run_id TEXT NOT NULL,
+        area TEXT NOT NULL,
+        attempt_order INTEGER NOT NULL,
+        provider_name TEXT NOT NULL,
+        ok INTEGER NOT NULL,
+        data_date TEXT,
+        error_category TEXT,
+        message TEXT,
+        raw_payload_hash TEXT,
+        PRIMARY KEY (sync_run_id, area, attempt_order)
+      );
+    `);
+
+    migrate(db);
+
+    const info = db.prepare("PRAGMA table_info(provider_results)").all() as Array<{ name: string }>;
+    expect(info.map((column) => column.name)).toContain("confidence");
+  });
 });

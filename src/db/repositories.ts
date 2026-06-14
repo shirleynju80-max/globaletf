@@ -96,6 +96,7 @@ export interface ProviderResultRow {
   attemptOrder: number;
   providerName: string;
   ok: boolean;
+  confidence?: number | null;
   dataDate?: string | null;
   errorCategory?: string | null;
   message?: string | null;
@@ -220,9 +221,9 @@ export function recordSyncRun(db: Database.Database, row: SyncRunRow): void {
 export function recordProviderResults(db: Database.Database, rows: ProviderResultRow[]): void {
   const insert = db.prepare(`
     INSERT OR REPLACE INTO provider_results (
-      sync_run_id, area, attempt_order, provider_name, ok, data_date, error_category, message, raw_payload_hash
+      sync_run_id, area, attempt_order, provider_name, ok, confidence, data_date, error_category, message, raw_payload_hash
     ) VALUES (
-      @syncRunId, @area, @attemptOrder, @providerName, @ok, @dataDate, @errorCategory, @message, @rawPayloadHash
+      @syncRunId, @area, @attemptOrder, @providerName, @ok, @confidence, @dataDate, @errorCategory, @message, @rawPayloadHash
     )
   `);
   const tx = db.transaction(() => {
@@ -230,6 +231,7 @@ export function recordProviderResults(db: Database.Database, rows: ProviderResul
       insert.run({
         ...row,
         ok: row.ok ? 1 : 0,
+        confidence: row.confidence ?? null,
         dataDate: row.dataDate ?? null,
         errorCategory: row.errorCategory ?? null,
         message: row.message ?? null,

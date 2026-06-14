@@ -301,13 +301,24 @@ describe("sync runner", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-06-11T03:04:05.000Z"));
     const db = createInMemoryDatabase();
-    const provider: DataProvider<FundQuote[]> = {
+    const blockedProvider: DataProvider<FundQuote[]> = {
       name: "blocked-quotes",
       fetch: async () => ({ ok: false, errorCategory: "anti_scraping", message: "blocked by provider", rawPayloadHash: "hash-1" })
     };
+    const backupProvider: DataProvider<FundQuote[]> = {
+      name: "backup-quotes",
+      fetch: async () => ({
+        ok: true,
+        source: "backup-quotes",
+        dataDate: "2026-06-10",
+        confidence: 0.75,
+        rawPayloadHash: "hash-2",
+        data: [{ fundCode: "513100", closePrice: 1.3, closingPremiumDiscountRate: 0.01, turnover: 100, tradeDate: "2026-06-10", source: "backup-quotes", syncRunId: "run-1" }]
+      })
+    };
 
     try {
-      await runDailySync(db, { quoteProviders: [provider] });
+      await runDailySync(db, { quoteProviders: [blockedProvider, backupProvider] });
     } finally {
       vi.useRealTimers();
     }
@@ -317,7 +328,7 @@ describe("sync runner", () => {
       FROM sync_runs
     `).all();
     const attempts = db.prepare(`
-      SELECT sync_run_id AS syncRunId, area, provider_name AS providerName, ok, error_category AS errorCategory, message, raw_payload_hash AS rawPayloadHash
+      SELECT sync_run_id AS syncRunId, area, provider_name AS providerName, ok, confidence, error_category AS errorCategory, message, raw_payload_hash AS rawPayloadHash
       FROM provider_results
       ORDER BY area, provider_name
     `).all();
@@ -335,9 +346,20 @@ describe("sync runner", () => {
       area: "quote",
       providerName: "blocked-quotes",
       ok: 0,
+      confidence: null,
       errorCategory: "anti_scraping",
       message: "blocked by provider",
       rawPayloadHash: "hash-1"
+    });
+    expect(attempts).toContainEqual({
+      syncRunId: "daily-20260611T030405Z",
+      area: "quote",
+      providerName: "backup-quotes",
+      ok: 1,
+      confidence: 0.75,
+      errorCategory: null,
+      message: null,
+      rawPayloadHash: "hash-2"
     });
   });
 

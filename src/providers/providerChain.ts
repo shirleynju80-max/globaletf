@@ -9,6 +9,7 @@ export async function runProviderChain<T>(providers: DataProvider<T>[]): Promise
       providerResults.push({
         providerName: provider.name,
         ok: true,
+        confidence: result.confidence,
         dataDate: result.dataDate,
         rawPayloadHash: result.rawPayloadHash
       });

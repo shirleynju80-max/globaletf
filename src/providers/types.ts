@@ -31,6 +31,7 @@ export interface DataProvider<T> {
 export interface ProviderAttempt {
   providerName: string;
   ok: boolean;
+  confidence?: number;
   errorCategory?: ProviderErrorCategory;
   message?: string;
   dataDate?: string;

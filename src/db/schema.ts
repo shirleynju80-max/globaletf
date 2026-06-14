@@ -92,6 +92,7 @@ export function migrate(db: Database.Database): void {
       attempt_order INTEGER NOT NULL,
       provider_name TEXT NOT NULL,
       ok INTEGER NOT NULL,
+      confidence REAL,
       data_date TEXT,
       error_category TEXT,
       message TEXT,
@@ -103,6 +104,7 @@ export function migrate(db: Database.Database): void {
 
   relaxLegacyQuotePremiumConstraint(db);
   addSyncStatusCountColumns(db);
+  addProviderResultColumns(db);
 }
 
 function relaxLegacyQuotePremiumConstraint(db: Database.Database): void {
@@ -147,5 +149,17 @@ function addSyncStatusCountColumns(db: Database.Database): void {
   }
   if (!names.has("duration_ms")) {
     db.exec("ALTER TABLE sync_status ADD COLUMN duration_ms INTEGER");
+  }
+}
+
+function addProviderResultColumns(db: Database.Database): void {
+  const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'provider_results'").get();
+  if (!table) return;
+
+  const columns = db.prepare("PRAGMA table_info(provider_results)").all() as Array<{ name: string }>;
+  const names = new Set(columns.map((column) => column.name));
+
+  if (!names.has("confidence")) {
+    db.exec("ALTER TABLE provider_results ADD COLUMN confidence REAL");
   }
 }

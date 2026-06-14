@@ -13,6 +13,7 @@ describe("runProviderChain", () => {
 
     expect(result.data).toBe(1);
     expect(result.providerResults).toHaveLength(1);
+    expect(result.providerResults[0]).toMatchObject({ providerName: "primary", confidence: 0.9 });
   });
 
   it("falls back when primary provider fails", async () => {
@@ -25,5 +26,6 @@ describe("runProviderChain", () => {
 
     expect(result.data).toBe(2);
     expect(result.providerResults.map((entry) => entry.providerName)).toEqual(["primary", "secondary"]);
+    expect(result.providerResults[1]).toMatchObject({ providerName: "secondary", confidence: 0.8 });
   });
 });
