@@ -144,6 +144,22 @@ describe("acceptance checks", () => {
       ok: false
     }));
   });
+
+  it("fails when required sync statuses lack freshness metadata", () => {
+    const db = createAcceptanceDatabase({
+      syncStatusOverrides: {
+        purchaseLimit: { dataDate: null, durationMs: null }
+      }
+    });
+
+    const result = runAcceptance(db);
+
+    expect(result.ok).toBe(false);
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      key: "syncStatusMetadata",
+      ok: false
+    }));
+  });
 });
 
 function createAcceptanceDatabase(overrides: {
@@ -153,6 +169,7 @@ function createAcceptanceDatabase(overrides: {
   fees?: Parameters<typeof insertSnapshotBundle>[1]["fees"];
   includeOtherIndexTargets?: boolean;
   includeSyncAudit?: boolean;
+  syncStatusOverrides?: Partial<Record<"fund" | "quote" | "purchaseLimit" | "fee" | "holding", Partial<Parameters<typeof recordSyncStatus>[1]>>>;
 } = {}) {
   const includeOtherIndexTargets = overrides.includeOtherIndexTargets ?? true;
   const includeSyncAudit = overrides.includeSyncAudit ?? true;
@@ -183,6 +200,7 @@ function createAcceptanceDatabase(overrides: {
     ]
   });
   for (const area of ["fund", "quote", "purchaseLimit", "fee", "holding"] as const) {
+    const statusOverride = overrides.syncStatusOverrides?.[area] ?? {};
     recordSyncStatus(db, {
       area,
       status: "ok",
@@ -190,7 +208,8 @@ function createAcceptanceDatabase(overrides: {
       dataDate: area === "holding" ? "2026Q1" : "2026-06-11",
       itemCount: 1,
       durationMs: 100,
-      updatedAt: "2026-06-11T03:00:00.000Z"
+      updatedAt: "2026-06-11T03:00:00.000Z",
+      ...statusOverride
     });
   }
   if (includeSyncAudit) {

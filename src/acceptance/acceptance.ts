@@ -36,6 +36,7 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
 
   const checks: AcceptanceCheck[] = [
     checkStatus(status),
+    checkStatusMetadata(status),
     {
       key: "syncAudit",
       ok: syncAudit.syncRunCount > 0 && syncAudit.providerResultCount > 0 && syncAudit.providerResultsWithFetchedAt === syncAudit.providerResultCount,
@@ -111,6 +112,25 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
   return {
     ok: checks.every((check) => check.ok),
     checks
+  };
+}
+
+function checkStatusMetadata(status: ReturnType<typeof querySyncStatus>): AcceptanceCheck {
+  const requiredAreas = ["fund", "quote", "purchaseLimit", "fee", "holding"] as const;
+  const complete = requiredAreas.filter((area) => {
+    const row = status[area];
+    return Boolean(row?.source) &&
+      Boolean(row?.dataDate) &&
+      Boolean(row?.updatedAt) &&
+      row?.itemCount != null &&
+      row.itemCount > 0 &&
+      row.durationMs != null;
+  });
+
+  return {
+    key: "syncStatusMetadata",
+    ok: complete.length === requiredAreas.length,
+    message: `required status metadata=${complete.length}/${requiredAreas.length}`
   };
 }
 
