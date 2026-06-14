@@ -386,7 +386,14 @@ function latest(values: string[]): string | null {
 }
 
 function queryCachedFunds(db: Database.Database): Fund[] {
-  return db.prepare(`
+  type CachedFundRow = Omit<Fund, "enabled" | "trackingTargetCode" | "fundCompany" | "parentFundCode"> & {
+    enabled: number;
+    trackingTargetCode: string | null;
+    fundCompany: string | null;
+    parentFundCode: string | null;
+  };
+
+  return (db.prepare(`
     SELECT
       code,
       name,
@@ -399,8 +406,7 @@ function queryCachedFunds(db: Database.Database): Fund[] {
       enabled
     FROM funds
     WHERE enabled = 1
-  `).all().map((row) => {
-    const fund = row as Fund & { enabled: number; trackingTargetCode: string | null; fundCompany: string | null; parentFundCode: string | null };
+  `).all() as CachedFundRow[]).map((fund) => {
     return {
       ...fund,
       fundCompany: fund.fundCompany ?? undefined,
