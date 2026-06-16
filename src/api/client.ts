@@ -27,6 +27,21 @@ export async function fetchSyncStatus(): Promise<SyncStatusMap> {
   return response.json();
 }
 
+export interface DiscoveryHealthSummary {
+  targetCode: string;
+  manifestCount: number;
+  onExchangeCount: number;
+  profileBackedOnExchange: number;
+  profileGaps: Array<{ targetCode: string; fundCode: string; venue: string }>;
+  coverageGaps: string[];
+}
+
+export async function fetchDiscoveryHealth(targetCode: string): Promise<DiscoveryHealthSummary> {
+  const response = await fetch(`${API_BASE}/api/discovery-health/${targetCode}`);
+  if (!response.ok) throw new Error(`Failed to fetch discovery health: ${response.status}`);
+  return response.json();
+}
+
 export interface LivePremiumRow {
   fundCode: string;
   name: string | null;

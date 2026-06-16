@@ -301,3 +301,64 @@ td {
 .live-error {
   color: #b4232a;
 }
+
+.discovery-banner {
+  margin-bottom: 16px;
+  padding: 12px 14px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+}
+
+.discovery-banner-ok {
+  background: #eef6f4;
+  border-color: #c9ddda;
+}
+
+.discovery-banner-warn {
+  background: #fff8eb;
+  border-color: #e3cfa6;
+}
+
+.discovery-banner-title {
+  margin: 0 0 4px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #244541;
+}
+
+.discovery-banner-detail {
+  margin: 0;
+  color: #51616a;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.discovery-pill {
+  display: inline-flex;
+  border: 1px solid #d2dce0;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  color: #51616a;
+  white-space: nowrap;
+}
+
+.discovery-pill-strong {
+  border-color: #9fc9c3;
+  background: #e7f3f1;
+  color: #17635c;
+  font-weight: 700;
+}
+
+.subsection-note {
+  margin-top: -4px;
+  margin-bottom: 8px;
+}
+
+tr.row-direct-limit td {
+  background: #f7fbfa;
+}
+
+tr.row-direct-limit td:first-child {
+  box-shadow: inset 3px 0 0 #24716b;
+}

@@ -82,6 +82,25 @@ describe("local API", () => {
     expect(row.iopvPremiumDiscountRate).toBeCloseTo(0.0714, 3);
   });
 
+  it("serves discovery health for a target", async () => {
+    const db = createInMemoryDatabase();
+    await runDailySync(db);
+    const app = createApp(db);
+    const server = app.listen(0);
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Expected TCP server address");
+
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/discovery-health/NASDAQ_100`);
+    const data = await response.json();
+    server.close();
+
+    expect(response.status).toBe(200);
+    expect(data.targetCode).toBe("NASDAQ_100");
+    expect(typeof data.manifestCount).toBe("number");
+    expect(Array.isArray(data.profileGaps)).toBe(true);
+    expect(Array.isArray(data.coverageGaps)).toBe(true);
+  });
+
   it("serves persisted sync status data", async () => {
     const db = createInMemoryDatabase();
     recordSyncStatus(db, {

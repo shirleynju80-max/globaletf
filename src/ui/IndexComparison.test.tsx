@@ -227,7 +227,7 @@ describe("IndexComparison", () => {
       />
     );
 
-    expect(screen.getByText("可买性")).toBeInTheDocument();
+    expect(screen.getAllByText("可买性").length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText("高限额")).toBeInTheDocument();
     expect(screen.getByText("低限额")).toBeInTheDocument();
   });
@@ -276,6 +276,84 @@ describe("IndexComparison", () => {
     );
 
     expect(screen.getByText("暂无标普500场内 ETF/LOF 数据")).toBeInTheDocument();
-    expect(screen.getByText("暂无标普500场外 A/C/F 数据")).toBeInTheDocument();
+    expect(screen.getByText("暂无标普500代销 A/C/F 数据")).toBeInTheDocument();
+  });
+
+  it("shows discovery source labels and splits direct I/F from agency shares", () => {
+    const { container } = render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        discoveryHealth={{
+          targetCode: "NASDAQ_100",
+          manifestCount: 53,
+          onExchangeCount: 14,
+          profileBackedOnExchange: 14,
+          profileGaps: [],
+          coverageGaps: []
+        }}
+        data={{
+          onExchange: [{
+            code: "513100",
+            name: "纳指ETF",
+            closePrice: 1.23,
+            closingPremiumDiscountRate: 0.012,
+            turnover: 120000000,
+            tradeDate: "2026-06-08",
+            source: "eastmoney",
+            discoverySource: "tracking-profile"
+          }],
+          offExchange: [
+            {
+              code: "021000",
+              name: "南方纳指100 I",
+              shareClass: "I",
+              status: "limited",
+              limitAmountYuan: 5000,
+              limitUnit: "per_day",
+              channelScope: "direct",
+              channelId: "nfjj",
+              source: "fundco-announcement-nfjj"
+            },
+            {
+              code: "000834",
+              name: "纳指100联接A",
+              shareClass: "A",
+              status: "limited",
+              limitAmountYuan: 1000,
+              channelScope: "agency",
+              source: "tiantian"
+            }
+          ]
+        }}
+      />
+    );
+
+    expect(screen.getByText("发现来源")).toBeInTheDocument();
+    expect(screen.getByText("F10校验")).toBeInTheDocument();
+    expect(screen.getByText("纳斯达克100 发现覆盖正常")).toBeInTheDocument();
+    expect(screen.getByText("直销 I/F（基金公司渠道）")).toBeInTheDocument();
+    expect(screen.getByText("代销 A/C/F 份额")).toBeInTheDocument();
+    expect(container.querySelector(".row-direct-limit")).toBeTruthy();
+    expect(screen.getByText("5,000 元/日")).toBeInTheDocument();
+  });
+
+  it("warns when discovery profile gaps are present", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        discoveryHealth={{
+          targetCode: "NASDAQ_100",
+          manifestCount: 50,
+          onExchangeCount: 12,
+          profileBackedOnExchange: 10,
+          profileGaps: [{ targetCode: "NASDAQ_100", fundCode: "159999", venue: "on_exchange" }],
+          coverageGaps: []
+        }}
+        data={{ onExchange: [], offExchange: [] }}
+      />
+    );
+
+    expect(screen.getByText("纳斯达克100 发现覆盖需关注")).toBeInTheDocument();
+    expect(screen.getByText(/159999/)).toBeInTheDocument();
   });
 });

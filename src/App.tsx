@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { INDEX_TARGETS } from "./domain/targets";
 import type { Target } from "./domain/types";
 import type { StockConcentrationRow, SyncStatusMap } from "./db/repositories";
-import { fetchIndexComparison, fetchLivePremium, fetchStockConcentration, fetchSyncStatus, fetchTargets, type LivePremiumRow } from "./api/client";
+import { fetchDiscoveryHealth, fetchIndexComparison, fetchLivePremium, fetchStockConcentration, fetchSyncStatus, fetchTargets, type DiscoveryHealthSummary, type LivePremiumRow } from "./api/client";
 import { DataStatus } from "./ui/DataStatus";
 import { IndexComparison } from "./ui/IndexComparison";
 import { StockConcentration } from "./ui/StockConcentration";
@@ -19,6 +19,7 @@ export function App() {
   const [liveAsOf, setLiveAsOf] = useState<string | null>(null);
   const [liveLoading, setLiveLoading] = useState(false);
   const [liveError, setLiveError] = useState<string | null>(null);
+  const [discoveryHealth, setDiscoveryHealth] = useState<DiscoveryHealthSummary | null>(null);
 
   const selectedIndexTargetName = useMemo(() => {
     return indexTargets.find((target) => target.code === selectedIndexTarget)?.name ?? selectedIndexTarget;
@@ -41,12 +42,20 @@ export function App() {
     setLivePremiums({});
     setLiveAsOf(null);
     setLiveError(null);
+    setDiscoveryHealth(null);
     fetchIndexComparison(selectedIndexTarget)
       .then((nextData) => {
         if (isCurrent) setData(nextData);
       })
       .catch(() => {
         if (isCurrent) setData(fallbackIndexComparison(selectedIndexTarget));
+      });
+    fetchDiscoveryHealth(selectedIndexTarget)
+      .then((health) => {
+        if (isCurrent) setDiscoveryHealth(health);
+      })
+      .catch(() => {
+        if (isCurrent) setDiscoveryHealth(null);
       });
     return () => {
       isCurrent = false;
@@ -108,6 +117,7 @@ export function App() {
         <IndexComparison
           targetName={selectedIndexTargetName}
           data={data}
+          discoveryHealth={discoveryHealth}
           livePremiums={livePremiums}
           liveAsOf={liveAsOf}
           liveLoading={liveLoading}

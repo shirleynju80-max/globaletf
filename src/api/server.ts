@@ -1,7 +1,7 @@
 import express from "express";
 import type Database from "better-sqlite3";
 import { openDatabase } from "../db/database";
-import { queryIndexComparison, queryOnExchangeFundCodes, queryStockConcentration, querySyncStatus } from "../db/repositories";
+import { queryIndexComparison, queryDiscoveryHealthForTarget, queryOnExchangeFundCodes, queryStockConcentration, querySyncStatus } from "../db/repositories";
 import { TARGETS } from "../domain/targets";
 import { fetchLivePremiums } from "../providers/eastmoneyLiveQuotes";
 import { queryPriorIopvSnapshots } from "../sync/iopvQuoteEnrichment";
@@ -41,6 +41,10 @@ export function createApp(db: Database.Database, options: CreateAppOptions = {})
 
   app.get("/api/targets", (_req, res) => {
     res.json(TARGETS);
+  });
+
+  app.get("/api/discovery-health/:targetCode", (req, res) => {
+    res.json(queryDiscoveryHealthForTarget(db, req.params.targetCode));
   });
 
   app.get("/api/index-comparison/:targetCode", (req, res) => {

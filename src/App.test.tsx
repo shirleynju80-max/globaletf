@@ -1,11 +1,12 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import { fetchIndexComparison, fetchStockConcentration, fetchSyncStatus, fetchTargets } from "./api/client";
+import { fetchDiscoveryHealth, fetchIndexComparison, fetchStockConcentration, fetchSyncStatus, fetchTargets } from "./api/client";
 
 vi.mock("./api/client", () => ({
   fetchTargets: vi.fn(),
   fetchIndexComparison: vi.fn(),
+  fetchDiscoveryHealth: vi.fn(),
   fetchStockConcentration: vi.fn(),
   fetchSyncStatus: vi.fn()
 }));
@@ -22,6 +23,14 @@ describe("App", () => {
       { code: "NVDA", name: "英伟达", type: "stock", aliases: [], region: "US", displayOrder: 101 }
     ]);
     vi.mocked(fetchIndexComparison).mockResolvedValue(emptyComparison);
+    vi.mocked(fetchDiscoveryHealth).mockResolvedValue({
+      targetCode: "NASDAQ_100",
+      manifestCount: 0,
+      onExchangeCount: 0,
+      profileBackedOnExchange: 0,
+      profileGaps: [],
+      coverageGaps: []
+    });
     vi.mocked(fetchStockConcentration).mockResolvedValue([]);
     vi.mocked(fetchSyncStatus).mockResolvedValue({});
   });

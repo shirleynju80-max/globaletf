@@ -52,3 +52,21 @@ export function preferDiscoverySource(
 ): DiscoverySource | undefined {
   return discoverySourceRank(right) > discoverySourceRank(left) ? right : left;
 }
+
+const DISCOVERY_SOURCE_LABELS: Record<DiscoverySource, string> = {
+  "tracking-profile": "F10校验",
+  "fund-family": "同系列产品",
+  "screener-name": "ETF筛选",
+  "agency-channel": "代销搜索",
+  "fundcode-search": "代码库",
+  "catalog-seed": "结构种子"
+};
+
+export function formatDiscoverySourceLabel(source: string | null | undefined): string {
+  if (!source) return "-";
+  return DISCOVERY_SOURCE_LABELS[source as DiscoverySource] ?? source;
+}
+
+export function isStrongDiscoverySource(source: string | null | undefined): boolean {
+  return source === "tracking-profile" || source === "screener-name" || source === "fund-family";
+}

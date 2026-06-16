@@ -39,6 +39,7 @@ interface IndexComparisonRow {
   custodianRate?: number | null;
   salesServiceRate?: number | null;
   redemptionFeeSummary?: string | null;
+  discoverySource?: string | null;
 }
 
 interface FeeRow {
@@ -337,8 +338,10 @@ export function queryIndexComparison(db: Database.Database, targetCode: string):
       l.limit_unit AS limitUnit,
       l.data_date AS limitDataDate,
       l.channel_scope AS channelScope,
-      l.channel_id AS channelId
+      l.channel_id AS channelId,
+      m.discovery_source AS discoverySource
     FROM funds f
+    LEFT JOIN fund_discovery_manifest m ON m.fund_code = f.code
     LEFT JOIN fund_quotes q ON q.rowid = (
       SELECT q2.rowid
       FROM fund_quotes q2
@@ -654,6 +657,34 @@ export function queryFundDiscoveryManifest(db: Database.Database): FundDiscovery
     FROM fund_discovery_manifest
     ORDER BY tracking_target_code, fund_code
   `).all() as FundDiscoveryManifestRow[];
+}
+
+export interface DiscoveryHealthSummary {
+  targetCode: string;
+  manifestCount: number;
+  onExchangeCount: number;
+  profileBackedOnExchange: number;
+  profileGaps: DiscoveryProfileGapRow[];
+  coverageGaps: string[];
+}
+
+export function queryDiscoveryHealthForTarget(db: Database.Database, targetCode: string): DiscoveryHealthSummary {
+  const manifest = queryFundDiscoveryManifest(db).filter((row) => row.trackingTargetCode === targetCode);
+  const onExchange = manifest.filter((row) => row.venue === "on_exchange" && (row.shareClass === "ETF" || row.shareClass === "LOF"));
+  const profileBackedOnExchange = onExchange.filter((row) =>
+    row.discoverySource === "tracking-profile" ||
+    row.discoverySource === "screener-name" ||
+    row.discoverySource === "fund-family"
+  ).length;
+
+  return {
+    targetCode,
+    manifestCount: manifest.length,
+    onExchangeCount: onExchange.length,
+    profileBackedOnExchange,
+    profileGaps: queryDiscoveryProfileGaps(db, targetCode),
+    coverageGaps: queryDiscoveryCoverageGaps(db, targetCode)
+  };
 }
 
 /** Enabled on-exchange ETFs/LOFs present in funds but missing from the latest discovery manifest. */

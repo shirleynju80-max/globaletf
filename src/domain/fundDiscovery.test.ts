@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { matchesDiscoveryNameHint, preferDiscoverySource } from "./fundDiscovery";
+import { matchesDiscoveryNameHint, preferDiscoverySource, formatDiscoverySourceLabel } from "./fundDiscovery";
 
 describe("fundDiscovery", () => {
   it("matches Nasdaq hints for short ETF names without index numbers", () => {
@@ -18,5 +18,11 @@ describe("fundDiscovery", () => {
   it("prefers tracking-profile over weaker discovery sources", () => {
     expect(preferDiscoverySource("fundcode-search", "tracking-profile")).toBe("tracking-profile");
     expect(preferDiscoverySource("catalog-seed", "screener-name")).toBe("screener-name");
+  });
+
+  it("formats discovery source labels for the UI", () => {
+    expect(formatDiscoverySourceLabel("tracking-profile")).toBe("F10校验");
+    expect(formatDiscoverySourceLabel("fundcode-search")).toBe("代码库");
+    expect(formatDiscoverySourceLabel(undefined)).toBe("-");
   });
 });
