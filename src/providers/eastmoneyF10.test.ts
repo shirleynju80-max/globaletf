@@ -53,6 +53,7 @@ describe("East Money F10 parser", () => {
       status: "limited",
       limitAmountYuan: 10,
       channelScope: "agency",
+      channelId: "eastmoney_aggregate",
       source: "tiantian-f10-jjfl"
     });
     expect(result.fees).toContainEqual(expect.objectContaining({ feeType: "subscription", rate: 0.0012, amountTierLowerBound: 0, amountTierUpperBound: 500000 }));
@@ -64,16 +65,27 @@ describe("East Money F10 parser", () => {
     expect(result.fees).toContainEqual(expect.objectContaining({ feeType: "sales_service", rate: 0 }));
   });
 
-  it("uses direct channel scope for F class funds", () => {
-    const result = parseEastMoneyF10FeesAndLimits({
+  it("tags F10 jjfl purchase limits as aggregate agency scope for all share classes", () => {
+    const fResult = parseEastMoneyF10FeesAndLimits({
       fund: { ...baseFund, code: "020123", shareClass: "F" },
       html: sampleHtml,
       dataDate: "2026-06-09",
       syncRunId: "run-1"
     });
+    expect(fResult.limit.channelScope).toBe("agency");
+    expect(fResult.limit.channelId).toBe("eastmoney_aggregate");
+    expect(fResult.fees[0]?.channelScope).toBe("direct");
 
-    expect(result.limit.channelScope).toBe("direct");
-    expect(result.fees.every((fee) => fee.channelScope === "direct")).toBe(true);
+    const iResult = parseEastMoneyF10FeesAndLimits({
+      fund: { ...baseFund, code: "021000", shareClass: "I", fundCompany: "南方基金" },
+      html: sampleHtml,
+      dataDate: "2026-06-09",
+      syncRunId: "run-1"
+    });
+    expect(iResult.limit.channelScope).toBe("agency");
+    expect(iResult.limit.channelId).toBe("eastmoney_aggregate");
+    expect(iResult.fees[0]?.channelScope).toBe("direct");
+    expect(iResult.fees[0]?.channelId).toBe("nfjj");
   });
 });
 

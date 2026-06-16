@@ -53,6 +53,35 @@ describe("local API", () => {
     expect(data[0]).toMatchObject({ fundCode: "513100", stockCode: "NVDA", navPercent: 8.5 });
   });
 
+  it("serves on-demand live premium computed from injected price and IOPV sources", async () => {
+    const db = createInMemoryDatabase();
+    await runDailySync(db);
+    const fetchImpl = (async (url: Parameters<typeof fetch>[0]) => {
+      const u = String(url);
+      if (u.includes("ulist.np")) {
+        return new Response(JSON.stringify({ data: { diff: [{ f12: "513100", f2: 1.5, f124: 1781496792 }] } }), { status: 200 });
+      }
+      if (u.includes("fundgz.1234567.com.cn")) {
+        return new Response(`jsonpgz({"fundcode":"513100","jzrq":"2026-06-11","dwjz":"1.4","gsz":"1.4","gszzl":"0.1","gztime":"2026-06-15 14:00"});`, { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof fetch;
+    const app = createApp(db, { fetchImpl });
+    const server = app.listen(0);
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Expected TCP server address");
+
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/live-premium/NASDAQ_100`);
+    const data = await response.json();
+    server.close();
+
+    expect(response.status).toBe(200);
+    expect(typeof data.asOf).toBe("string");
+    const row = data.rows.find((entry: { fundCode: string }) => entry.fundCode === "513100");
+    expect(row).toMatchObject({ price: 1.5, iopv: 1.4 });
+    expect(row.iopvPremiumDiscountRate).toBeCloseTo(0.0714, 3);
+  });
+
   it("serves persisted sync status data", async () => {
     const db = createInMemoryDatabase();
     recordSyncStatus(db, {

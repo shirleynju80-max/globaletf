@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryDatabase } from "../db/database";
-import { insertSnapshotBundle, recordProviderResults, recordSyncRun, recordSyncStatus } from "../db/repositories";
+import { insertSnapshotBundle, recordFundDiscoveryManifest, recordProviderResults, recordSyncRun, recordSyncStatus, replaceDiscoveryProfileGaps } from "../db/repositories";
+import { CATALOG_DIRECT_SHARE_FUNDS, CATALOG_FUNDS } from "../domain/fundCatalog";
+import { NASDAQ_ACCEPTANCE_FUNDS } from "./nasdaqAcceptanceFixtures";
+import { directChannelForCompany } from "../domain/channels";
+import { upsertFundTrackingProfiles } from "../sync/trackingProfileSync";
 import { runAcceptance } from "./acceptance";
 
 describe("acceptance checks", () => {
@@ -187,6 +191,35 @@ describe("acceptance checks", () => {
     }));
   });
 
+  it("fails when discovery manifest is missing profile-backed on-exchange ETFs", () => {
+    const db = createAcceptanceDatabase();
+    recordFundDiscoveryManifest(db, "acceptance-run", [], "2026-06-11T03:00:00.000Z");
+
+    const result = runAcceptance(db);
+
+    expect(result.ok).toBe(false);
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      key: "discoveryManifest.NASDAQ_100",
+      ok: false
+    }));
+  });
+
+  it("fails when catalog I/F funds lack fund-company direct limit rows", () => {
+    const db = createAcceptanceDatabase({
+      limits: [
+        { fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "2026-06-11", confidence: 0.9, syncRunId: "acceptance-run" }
+      ]
+    });
+
+    const result = runAcceptance(db);
+
+    expect(result.ok).toBe(false);
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      key: "catalogDirectShareLimits",
+      ok: false
+    }));
+  });
+
   it("fails when required sync statuses lack freshness metadata", () => {
     const db = createAcceptanceDatabase({
       syncStatusOverrides: {
@@ -218,29 +251,33 @@ function createAcceptanceDatabase(overrides: {
   const includeOtherIndexTargets = overrides.includeOtherIndexTargets ?? true;
   const includeSyncAudit = overrides.includeSyncAudit ?? true;
   const db = createInMemoryDatabase();
+  // Drop one curated ETF when simulating a coverage gap; otherwise include the full
+  // authoritative Nasdaq 100 catalog so the curated coverage checks reflect real syncs.
+  const nasdaqCatalog = overrides.includeNasdaqCoverageSeeds === false
+    ? NASDAQ_ACCEPTANCE_FUNDS.filter((fund) => fund.code !== "159632")
+    : [...NASDAQ_ACCEPTANCE_FUNDS, ...CATALOG_FUNDS.filter((fund) => !NASDAQ_ACCEPTANCE_FUNDS.some((seed) => seed.code === fund.code))];
+  const otherIndexFunds = includeOtherIndexTargets ? [
+    { code: "513500", name: "标普500ETF", fundType: "ETF", venue: "on_exchange" as const, trackingTargetCode: "SP_500", shareClass: "ETF" as const, enabled: true },
+    { code: "050025", name: "博时标普500ETF联接A", fundType: "QDII", venue: "off_exchange" as const, trackingTargetCode: "SP_500", shareClass: "A" as const, enabled: true },
+    { code: "513880", name: "日经225ETF", fundType: "ETF", venue: "on_exchange" as const, trackingTargetCode: "NIKKEI_225", shareClass: "ETF" as const, enabled: true },
+    { code: "513520", name: "日经ETF", fundType: "ETF", venue: "on_exchange" as const, trackingTargetCode: "NIKKEI_225", shareClass: "ETF" as const, enabled: true },
+    { code: "513000", name: "日经225ETF易方达", fundType: "ETF", venue: "on_exchange" as const, trackingTargetCode: "NIKKEI_225", shareClass: "ETF" as const, enabled: true },
+    { code: "019449", name: "摩根日经225联接A", fundType: "QDII", venue: "off_exchange" as const, trackingTargetCode: "NIKKEI_225", shareClass: "A" as const, enabled: true },
+    { code: "513180", name: "恒生科技指数ETF", fundType: "ETF", venue: "on_exchange" as const, trackingTargetCode: "HSTECH", shareClass: "ETF" as const, enabled: true },
+    { code: "513010", name: "恒生科技ETF", fundType: "ETF", venue: "on_exchange" as const, trackingTargetCode: "HSTECH", shareClass: "ETF" as const, enabled: true },
+    { code: "012348", name: "华夏恒生科技ETF联接A", fundType: "QDII", venue: "off_exchange" as const, trackingTargetCode: "HSTECH", shareClass: "A" as const, enabled: true }
+  ] : [];
+  const stockScanFunds = overrides.includeStockScanFunds === false ? [] : [
+    { code: "539002", name: "建信新兴市场混合(QDII)A", fundType: "QDII-混合偏股", venue: "off_exchange" as const, shareClass: "A" as const, enabled: true }
+  ];
+  const allFunds = [...nasdaqCatalog, ...stockScanFunds, ...otherIndexFunds];
   insertSnapshotBundle(db, {
     syncRunId: "acceptance-run",
-    funds: [
-      { code: "513100", name: "纳指ETF", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true },
-      ...(overrides.includeNasdaqCoverageSeeds === false ? [] : [
-        { code: "159632", name: "纳斯达克ETF华安", fundType: "指数型-海外股票", venue: "on_exchange" as const, trackingTargetCode: "NASDAQ_100", shareClass: "ETF" as const, enabled: true }
-      ]),
-      { code: "000834", name: "纳指100联接A", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "A", enabled: true },
-      ...(overrides.includeStockScanFunds === false ? [] : [
-        { code: "539002", name: "建信新兴市场混合(QDII)A", fundType: "QDII-混合偏股", venue: "off_exchange" as const, shareClass: "A" as const, enabled: true }
-      ]),
-      ...(includeOtherIndexTargets ? [
-        { code: "513500", name: "标普500ETF", fundType: "ETF", venue: "on_exchange" as const, trackingTargetCode: "SP_500", shareClass: "ETF" as const, enabled: true },
-        { code: "050025", name: "博时标普500ETF联接A", fundType: "QDII", venue: "off_exchange" as const, trackingTargetCode: "SP_500", shareClass: "A" as const, enabled: true },
-        { code: "513880", name: "日经225ETF", fundType: "ETF", venue: "on_exchange" as const, trackingTargetCode: "NIKKEI_225", shareClass: "ETF" as const, enabled: true },
-        { code: "019449", name: "摩根日经225联接A", fundType: "QDII", venue: "off_exchange" as const, trackingTargetCode: "NIKKEI_225", shareClass: "A" as const, enabled: true },
-        { code: "513180", name: "恒生科技指数ETF", fundType: "ETF", venue: "on_exchange" as const, trackingTargetCode: "HSTECH", shareClass: "ETF" as const, enabled: true },
-        { code: "012348", name: "华夏恒生科技ETF联接A", fundType: "QDII", venue: "off_exchange" as const, trackingTargetCode: "HSTECH", shareClass: "A" as const, enabled: true }
-      ] : [])
-    ],
+    funds: allFunds,
     quotes: overrides.quotes ?? [{ fundCode: "513100", closePrice: 1.23, closingPremiumDiscountRate: 0.012, turnover: 120000000, tradeDate: "2026-06-10", source: "eastmoney-on-exchange-quote", syncRunId: "acceptance-run" }],
     limits: overrides.limits ?? [
       { fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "2026-06-11", confidence: 0.9, syncRunId: "acceptance-run" },
+      ...catalogDirectShareLimitFixtures(),
       ...(overrides.includeStockScanFunds === false ? [] : [
         { fundCode: "539002", shareClass: "A" as const, status: "limited" as const, limitAmountYuan: 10, limitUnit: "per_day" as const, channelScope: "agency" as const, source: "tiantian-f10-jjfl", dataDate: "2026-06-11", confidence: 0.9, syncRunId: "acceptance-run" }
       ])
@@ -257,6 +294,18 @@ function createAcceptanceDatabase(overrides: {
       ])
     ]
   });
+  recordFundDiscoveryManifest(
+    db,
+    "acceptance-run",
+    allFunds
+      .filter((fund) => fund.trackingTargetCode)
+      .map((fund) => ({
+        ...fund,
+        discoverySource: fund.venue === "on_exchange" ? "tracking-profile" : "catalog-seed"
+      })),
+    "2026-06-11T03:00:00.000Z"
+  );
+  replaceDiscoveryProfileGaps(db, "acceptance-run", [], "2026-06-11T03:00:00.000Z");
   for (const area of ["fund", "quote", "purchaseLimit", "fee", "holding"] as const) {
     const statusOverride = overrides.syncStatusOverrides?.[area] ?? {};
     recordSyncStatus(db, {
@@ -290,5 +339,42 @@ function createAcceptanceDatabase(overrides: {
       }
     ]);
   }
+  upsertFundTrackingProfiles(db, allFunds
+    .filter((fund) => fund.trackingTargetCode)
+    .map((fund) => ({
+      fundCode: fund.code,
+      trackingIndex: trackingIndexLabel(fund.trackingTargetCode!),
+      benchmark: `${trackingIndexLabel(fund.trackingTargetCode!)}收益率`,
+      verifiedOk: true,
+      verifiedAt: "2026-06-11T03:00:00.000Z"
+    })));
   return db;
+}
+
+function trackingIndexLabel(targetCode: string): string {
+  switch (targetCode) {
+    case "SP_500": return "标普500指数";
+    case "NIKKEI_225": return "日经225指数";
+    case "HSTECH": return "恒生科技指数";
+    default: return "纳斯达克100指数";
+  }
+}
+
+function catalogDirectShareLimitFixtures(): Parameters<typeof insertSnapshotBundle>[1]["limits"] {
+  return CATALOG_DIRECT_SHARE_FUNDS.map((fund) => {
+    const channelId = directChannelForCompany(fund.fundCompany);
+    return {
+      fundCode: fund.code,
+      shareClass: fund.shareClass,
+      status: "limited" as const,
+      limitAmountYuan: fund.shareClass === "I" ? 5000 : 1000,
+      limitUnit: "per_day" as const,
+      channelScope: "direct" as const,
+      channelId,
+      source: `fundco-announcement-${channelId}`,
+      dataDate: "2026-06-11",
+      confidence: 0.9,
+      syncRunId: "acceptance-run"
+    };
+  });
 }

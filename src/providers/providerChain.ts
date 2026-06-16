@@ -1,6 +1,10 @@
 import type { DataProvider, ProviderAttempt } from "./types";
 
-export async function runProviderChain<T>(providers: DataProvider<T>[]): Promise<{ data: T; providerResults: ProviderAttempt[] }> {
+export async function runProviderChain<T>(providers: DataProvider<T>[]): Promise<{
+  data: T;
+  providerResults: ProviderAttempt[];
+  discoveryProfileGaps?: Array<{ targetCode: string; fundCode: string; venue: string }>;
+}> {
   const providerResults: ProviderAttempt[] = [];
 
   for (const provider of providers) {
@@ -15,7 +19,11 @@ export async function runProviderChain<T>(providers: DataProvider<T>[]): Promise
         dataDate: result.dataDate,
         rawPayloadHash: result.rawPayloadHash
       });
-      return { data: result.data, providerResults };
+      return {
+        data: result.data,
+        providerResults,
+        discoveryProfileGaps: result.discoveryProfileGaps
+      };
     }
 
     providerResults.push({

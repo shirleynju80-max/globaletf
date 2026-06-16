@@ -26,3 +26,26 @@ export async function fetchSyncStatus(): Promise<SyncStatusMap> {
   if (!response.ok) throw new Error(`Failed to fetch sync status: ${response.status}`);
   return response.json();
 }
+
+export interface LivePremiumRow {
+  fundCode: string;
+  name: string | null;
+  price: number | null;
+  priceTime: string | null;
+  iopv: number | null;
+  iopvTime: string | null;
+  iopvPremiumDiscountRate: number | null;
+  aligned: boolean | null;
+  iopvSource: "current" | "trade_date_match" | "none";
+}
+
+export interface LivePremiumResponse {
+  asOf: string;
+  rows: LivePremiumRow[];
+}
+
+export async function fetchLivePremium(targetCode: string): Promise<LivePremiumResponse> {
+  const response = await fetch(`${API_BASE}/api/live-premium/${targetCode}`);
+  if (!response.ok) throw new Error(`Failed to fetch live premium: ${response.status}`);
+  return response.json();
+}

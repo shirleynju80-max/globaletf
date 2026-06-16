@@ -15,6 +15,7 @@ export type ProviderFetchResult<T> =
       dataDate: string;
       confidence: number;
       rawPayloadHash?: string;
+      discoveryProfileGaps?: Array<{ targetCode: string; fundCode: string; venue: string }>;
     }
   | {
       ok: false;

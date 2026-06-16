@@ -1,3 +1,4 @@
+import { matchesDiscoveryNameHint } from "../domain/fundDiscovery";
 import type { Fund, ShareClass } from "../domain/types";
 import type { DataProvider } from "./types";
 
@@ -15,7 +16,7 @@ export interface FundSearchRow {
   otherName?: string;
 }
 
-interface TargetSelection {
+export interface TargetSelection {
   targetCode: string;
   targetName: string;
   aliases: string[];
@@ -60,12 +61,15 @@ export function parseEastMoneyFundSuggestions(payload: unknown): FundSearchRow[]
 
 export function selectFundsForTarget(rows: FundSearchRow[], target: TargetSelection): Fund[] {
   const deduped = new Map<string, Fund>();
-  for (const fund of rows
-    .filter((row) => matchesTarget(row, target))
-    .filter((row) => !isForeignCurrencyShare(row.name))
-    .map((row) => toFund(row, target.targetCode))
-    .filter((fund): fund is Fund => fund != null)) {
-    deduped.set(fund.code, fund);
+  for (const row of rows) {
+    if (!matchesTarget(row, target) || isForeignCurrencyShare(row.name)) continue;
+    const fund = toFund(row, target.targetCode);
+    if (!fund) continue;
+    const seeded = target.seedFundCodes?.includes(row.code);
+    deduped.set(fund.code, {
+      ...fund,
+      discoverySource: seeded ? "catalog-seed" : fund.discoverySource ?? "fundcode-search"
+    });
   }
   return [...deduped.values()].sort((a, b) => a.code.localeCompare(b.code));
 }
@@ -74,22 +78,25 @@ export function selectFundsForTargets(rows: FundSearchRow[], targets: TargetSele
   return targets.flatMap((target) => selectFundsForTarget(rows, target));
 }
 
+export async function fetchEastMoneyFundCodeRows(fetchImpl: typeof fetch = fetch): Promise<FundSearchRow[]> {
+  const response = await fetchImpl(ENDPOINT, {
+    headers: {
+      "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
+      Referer: "https://fund.eastmoney.com/"
+    }
+  });
+  if (!response.ok) return [];
+  return parseEastMoneyFundSearch(await response.text());
+}
+
 export function createEastMoneyFundSearchProvider(options: ProviderOptions): DataProvider<Fund[]> {
   return {
     name: SOURCE,
     fetch: async () => {
       const fetchImpl = options.fetchImpl ?? fetch;
       try {
-        const response = await fetchImpl(ENDPOINT, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
-            Referer: "https://fund.eastmoney.com/"
-          }
-        });
-        if (!response.ok) return { ok: false, errorCategory: "http", message: `${ENDPOINT} returned ${response.status}` };
-
         const rows = [
-          ...parseEastMoneyFundSearch(await response.text()),
+          ...await fetchEastMoneyFundCodeRows(fetchImpl),
           ...await fetchSuggestionRows(fetchImpl, [options])
         ];
         const funds = selectFundsForTarget(rows, options);
@@ -108,16 +115,8 @@ export function createEastMoneyMultiTargetFundSearchProvider(options: MultiTarge
     fetch: async () => {
       const fetchImpl = options.fetchImpl ?? fetch;
       try {
-        const response = await fetchImpl(ENDPOINT, {
-          headers: {
-            "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
-            Referer: "https://fund.eastmoney.com/"
-          }
-        });
-        if (!response.ok) return { ok: false, errorCategory: "http", message: `${ENDPOINT} returned ${response.status}` };
-
         const rows = [
-          ...parseEastMoneyFundSearch(await response.text()),
+          ...await fetchEastMoneyFundCodeRows(fetchImpl),
           ...await fetchSuggestionRows(fetchImpl, options.targets)
         ];
         const funds = selectFundsForTargets(rows, options.targets);
@@ -132,11 +131,23 @@ export function createEastMoneyMultiTargetFundSearchProvider(options: MultiTarge
 
 function matchesTarget(row: FundSearchRow, target: TargetSelection): boolean {
   if (target.seedFundCodes?.includes(row.code)) return true;
-  const haystack = normalize(`${row.name} ${row.shortName} ${row.pinyin} ${row.otherName ?? ""}`);
+  if (!isTargetRelevantRow(row, target.targetCode)) return false;
+  const hintText = `${row.name} ${row.shortName} ${row.pinyin} ${row.otherName ?? ""}`;
+  if (matchesDiscoveryNameHint(hintText, target.targetCode)) return true;
+  const haystack = normalize(hintText);
   return [target.targetName, ...target.aliases].some((alias) => {
     const normalizedAlias = normalize(alias);
     return normalizedAlias.length > 0 && haystack.includes(normalizedAlias);
   });
+}
+
+const OVERSEAS_INDEX_TARGETS = new Set(["NASDAQ_100", "SP_500", "NIKKEI_225"]);
+
+function isTargetRelevantRow(row: FundSearchRow, targetCode: string): boolean {
+  const haystack = `${row.type} ${row.name}`;
+  if (targetCode === "HSTECH") return /恒生|HSTECH|港股|互联/i.test(haystack);
+  if (OVERSEAS_INDEX_TARGETS.has(targetCode)) return /QDII|海外股票|海外指数/i.test(haystack);
+  return true;
 }
 
 function isForeignCurrencyShare(name: string): boolean {
@@ -158,13 +169,14 @@ function toFund(row: FundSearchRow, targetCode: string): Fund | undefined {
   };
 }
 
-function inferShareClass(row: FundSearchRow): ShareClass {
+export function inferShareClass(row: FundSearchRow): ShareClass {
   if (/^\d{6}$/.test(row.code) && (row.code.startsWith("15") || row.code.startsWith("51"))) return "ETF";
   if (row.code.startsWith("16")) return "LOF";
   const normalizedName = row.name.replace(/[（）]/g, (char) => (char === "（" ? "(" : ")"));
-  if (/[（(]?A(?:人民币|\(人民币\))?[）)]?$/.test(normalizedName)) return "A";
-  if (/[（(]?C(?:人民币|\(人民币\))?[）)]?$/.test(normalizedName)) return "C";
-  if (/[（(]?F(?:人民币|\(人民币\))?[）)]?$/.test(normalizedName)) return "F";
+  // Off-exchange retail/agency (A/C/F) and direct/institutional (I/E/Y/D/O) share classes.
+  for (const cls of ["A", "C", "F", "I", "E", "Y", "D", "O"] as const) {
+    if (new RegExp(`[（(]?${cls}(?:人民币|\\(人民币\\))?[）)]?$`).test(normalizedName)) return cls;
+  }
   return "UNKNOWN";
 }
 

@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { INDEX_TARGETS } from "./domain/targets";
 import type { Target } from "./domain/types";
 import type { StockConcentrationRow, SyncStatusMap } from "./db/repositories";
-import { fetchIndexComparison, fetchStockConcentration, fetchSyncStatus, fetchTargets } from "./api/client";
+import { fetchIndexComparison, fetchLivePremium, fetchStockConcentration, fetchSyncStatus, fetchTargets, type LivePremiumRow } from "./api/client";
 import { DataStatus } from "./ui/DataStatus";
 import { IndexComparison } from "./ui/IndexComparison";
 import { StockConcentration } from "./ui/StockConcentration";
@@ -15,6 +15,10 @@ export function App() {
   const [syncStatus, setSyncStatus] = useState<SyncStatusMap | null>(null);
   const [selectedStock, setSelectedStock] = useState("NVDA");
   const [stockRows, setStockRows] = useState<StockConcentrationRow[]>([]);
+  const [livePremiums, setLivePremiums] = useState<Record<string, LivePremiumRow>>({});
+  const [liveAsOf, setLiveAsOf] = useState<string | null>(null);
+  const [liveLoading, setLiveLoading] = useState(false);
+  const [liveError, setLiveError] = useState<string | null>(null);
 
   const selectedIndexTargetName = useMemo(() => {
     return indexTargets.find((target) => target.code === selectedIndexTarget)?.name ?? selectedIndexTarget;
@@ -34,6 +38,9 @@ export function App() {
   useEffect(() => {
     let isCurrent = true;
     setData(null);
+    setLivePremiums({});
+    setLiveAsOf(null);
+    setLiveError(null);
     fetchIndexComparison(selectedIndexTarget)
       .then((nextData) => {
         if (isCurrent) setData(nextData);
@@ -44,6 +51,22 @@ export function App() {
     return () => {
       isCurrent = false;
     };
+  }, [selectedIndexTarget]);
+
+  const refreshLivePremium = useCallback(() => {
+    setLiveLoading(true);
+    setLiveError(null);
+    fetchLivePremium(selectedIndexTarget)
+      .then((response) => {
+        const byCode: Record<string, LivePremiumRow> = {};
+        for (const row of response.rows) byCode[row.fundCode] = row;
+        setLivePremiums(byCode);
+        setLiveAsOf(response.asOf);
+      })
+      .catch((error: unknown) => {
+        setLiveError(error instanceof Error ? error.message : "实时刷新失败");
+      })
+      .finally(() => setLiveLoading(false));
   }, [selectedIndexTarget]);
 
   useEffect(() => {
@@ -81,7 +104,17 @@ export function App() {
       </header>
       <DataStatus status={syncStatus} />
       <TargetSelector targets={indexTargets} selectedTargetCode={selectedIndexTarget} onSelectTarget={setSelectedIndexTarget} />
-      {data ? <IndexComparison targetName={selectedIndexTargetName} data={data} /> : <p>加载中...</p>}
+      {data ? (
+        <IndexComparison
+          targetName={selectedIndexTargetName}
+          data={data}
+          livePremiums={livePremiums}
+          liveAsOf={liveAsOf}
+          liveLoading={liveLoading}
+          liveError={liveError}
+          onRefreshLive={refreshLivePremium}
+        />
+      ) : <p>加载中...</p>}
       <StockConcentration selectedStock={selectedStock} rows={stockRows} onSelectStock={setSelectedStock} />
     </main>
   );

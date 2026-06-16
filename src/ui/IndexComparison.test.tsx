@@ -20,8 +20,70 @@ describe("IndexComparison", () => {
     expect(screen.getByText("看佣金/买卖价差，成交额越高通常越好")).toBeInTheDocument();
     expect(screen.getByText(/仅供参考/)).toBeInTheDocument();
     expect(screen.getByText(/场内按成交额排序/)).toBeInTheDocument();
-    expect(screen.getByText(/场外按开放申购和限额金额排序/)).toBeInTheDocument();
-    expect(screen.getByText(/申购费默认展示最低金额段/)).toBeInTheDocument();
+    expect(screen.getByText(/场外代销取各平台最严限额/)).toBeInTheDocument();
+  });
+
+  it("shows the IOPV-based premium as the primary gauge with its estimate time", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [{
+            code: "159632",
+            name: "纳斯达克ETF华安",
+            closePrice: 2.458,
+            closingPremiumDiscountRate: 0.012,
+            unitNav: 2.2733,
+            navDate: "2026-06-11",
+            iopv: 2.2866,
+            iopvTime: "2026-06-13 04:00",
+            iopvPremiumDiscountRate: 0.0749,
+            turnover: 120000000,
+            tradeDate: "2026-06-13",
+            source: "eastmoney-on-exchange-spot"
+          }],
+          offExchange: []
+        }}
+      />
+    );
+
+    expect(screen.getByText("折溢价(实时估值)")).toBeInTheDocument();
+    expect(screen.getByText("7.49%（截至2026-06-13 04:00）")).toBeInTheDocument();
+    expect(screen.getByText(/实时估值\(IOPV\)/)).toBeInTheDocument();
+  });
+
+  it("overlays live premium with prior-snapshot IOPV label when fallback is used", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [{ code: "159632", name: "纳斯达克ETF华安", closePrice: 2.376, iopvPremiumDiscountRate: 0.0388, iopvTime: "2026-06-13 04:00", turnover: 120000000, tradeDate: "2026-06-14", source: "eastmoney-on-exchange-spot" }],
+          offExchange: []
+        }}
+        liveAsOf="2026-06-15T04:13:00.000Z"
+        livePremiums={{
+          "159632": { price: 2.376, priceTime: "2026-06-12T07:00:00.000Z", iopv: 2.25, iopvTime: "2026-06-12 04:00", iopvPremiumDiscountRate: 0.056, aligned: false, iopvSource: "trade_date_match" }
+        }}
+        onRefreshLive={() => {}}
+      />
+    );
+
+    expect(screen.getByText("实时刷新折溢价")).toBeInTheDocument();
+    expect(screen.getByText(/对应交易日估值/)).toBeInTheDocument();
+  });
+
+  it("shows a clear placeholder when the IOPV estimate is missing", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [{ code: "513100", name: "纳指ETF", closePrice: 1.23, closingPremiumDiscountRate: 0.012, iopvPremiumDiscountRate: null, turnover: 120000000, tradeDate: "2026-06-08", source: "eastmoney" }],
+          offExchange: []
+        }}
+      />
+    );
+
+    expect(screen.getByText("估值缺失")).toBeInTheDocument();
   });
 
   it("shows a clear placeholder when NAV is missing", () => {

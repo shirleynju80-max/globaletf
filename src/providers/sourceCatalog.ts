@@ -21,7 +21,7 @@ export const OFF_EXCHANGE_SOURCES: SourceDescriptor[] = [
     endpointPattern: "https://fund.eastmoney.com/js/fundcode_search.js",
     parsingMode: "js_wrapped_json",
     provides: ["fund_universe", "fund_name", "fund_type", "share_class_hint"],
-    notes: "Use for initial fund universe and share-class suffix inference."
+    notes: "Primary fund universe. Augmented by ETF screener and agency-channel searches (支付宝/理财通/京东/招行/天天)."
   },
   {
     name: "eastmoney-f10-lsjz-status",

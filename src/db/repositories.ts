@@ -21,6 +21,9 @@ interface IndexComparisonRow {
   closingPremiumDiscountRate: number | null;
   unitNav?: number | null;
   navDate?: string | null;
+  iopv?: number | null;
+  iopvTime?: string | null;
+  iopvPremiumDiscountRate?: number | null;
   turnover?: number;
   tradeDate?: string;
   status?: string;
@@ -29,6 +32,7 @@ interface IndexComparisonRow {
   limitDataDate?: string | null;
   feeDataDate?: string | null;
   channelScope?: string;
+  channelId?: string;
   source?: string;
   defaultSubscriptionRate?: number | null;
   managementRate?: number | null;
@@ -117,16 +121,18 @@ export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBund
   const disableFundsForTarget = db.prepare("UPDATE funds SET enabled = 0 WHERE tracking_target_code = ?");
   const insertQuote = db.prepare(`
     INSERT OR REPLACE INTO fund_quotes (
-      fund_code, close_price, closing_premium_discount_rate, unit_nav, nav_date, turnover, trade_date, source, sync_run_id
+      fund_code, close_price, closing_premium_discount_rate, unit_nav, nav_date,
+      iopv, iopv_time, iopv_premium_discount_rate, price_time, iopv_aligned, turnover, trade_date, source, sync_run_id
     ) VALUES (
-      @fundCode, @closePrice, @closingPremiumDiscountRate, @unitNav, @navDate, @turnover, @tradeDate, @source, @syncRunId
+      @fundCode, @closePrice, @closingPremiumDiscountRate, @unitNav, @navDate,
+      @iopv, @iopvTime, @iopvPremiumDiscountRate, @priceTime, @iopvAligned, @turnover, @tradeDate, @source, @syncRunId
     )
   `);
   const insertLimit = db.prepare(`
     INSERT OR REPLACE INTO purchase_limits (
-      fund_code, share_class, status, limit_amount_yuan, limit_unit, channel_scope, source, data_date, confidence, sync_run_id
+      fund_code, share_class, status, limit_amount_yuan, limit_unit, channel_scope, channel_id, source, data_date, confidence, sync_run_id
     ) VALUES (
-      @fundCode, @shareClass, @status, @limitAmountYuan, @limitUnit, @channelScope, @source, @dataDate, @confidence, @syncRunId
+      @fundCode, @shareClass, @status, @limitAmountYuan, @limitUnit, @channelScope, @channelId, @source, @dataDate, @confidence, @syncRunId
     )
   `);
   const insertFee = db.prepare(`
@@ -139,6 +145,10 @@ export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBund
     )
   `);
   const deleteFeeSnapshot = db.prepare("DELETE FROM fund_fees WHERE fund_code = ? AND source = ? AND data_date = ?");
+  const deleteStaleF10DirectLimits = db.prepare(`
+    DELETE FROM purchase_limits
+    WHERE channel_scope = 'direct' AND source = 'tiantian-f10-jjfl'
+  `);
   const insertHolding = db.prepare(`
     INSERT OR REPLACE INTO fund_holdings (
       fund_code, stock_code, stock_name, nav_percent, holding_market_value, report_period, source, sync_run_id
@@ -165,14 +175,23 @@ export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBund
         ...quote,
         unitNav: quote.unitNav ?? null,
         navDate: quote.navDate ?? null,
+        iopv: quote.iopv ?? null,
+        iopvTime: quote.iopvTime ?? null,
+        iopvPremiumDiscountRate: quote.iopvPremiumDiscountRate ?? null,
+        priceTime: quote.priceTime ?? null,
+        iopvAligned: quote.iopvAligned == null ? null : quote.iopvAligned ? 1 : 0,
         turnover: quote.turnover ?? null
       });
+    }
+    if (bundle.limits.length > 0) {
+      deleteStaleF10DirectLimits.run();
     }
     for (const limit of bundle.limits) {
       insertLimit.run({
         ...limit,
         limitAmountYuan: limit.limitAmountYuan ?? null,
-        limitUnit: limit.limitUnit ?? null
+        limitUnit: limit.limitUnit ?? null,
+        channelId: limit.channelId ?? "aggregate"
       });
     }
     for (const key of uniqueFeeSnapshotKeys(bundle.fees)) {
@@ -287,6 +306,15 @@ function uniqueSnapshotTargets(funds: Fund[]): string[] {
   return [...new Set(funds.flatMap((fund) => (fund.trackingTargetCode ? [fund.trackingTargetCode] : [])))];
 }
 
+export function queryOnExchangeFundCodes(db: Database.Database, targetCode: string): Array<{ code: string; name: string }> {
+  return db.prepare(`
+    SELECT code, name
+    FROM funds
+    WHERE tracking_target_code = ? AND venue = 'on_exchange' AND enabled = 1
+    ORDER BY code
+  `).all(targetCode) as Array<{ code: string; name: string }>;
+}
+
 export function queryIndexComparison(db: Database.Database, targetCode: string): { onExchange: IndexComparisonRow[]; offExchange: IndexComparisonRow[] } {
   const rows = db.prepare(`
     SELECT
@@ -298,6 +326,9 @@ export function queryIndexComparison(db: Database.Database, targetCode: string):
       q.closing_premium_discount_rate AS closingPremiumDiscountRate,
       q.unit_nav AS unitNav,
       q.nav_date AS navDate,
+      q.iopv AS iopv,
+      q.iopv_time AS iopvTime,
+      q.iopv_premium_discount_rate AS iopvPremiumDiscountRate,
       q.turnover,
       q.trade_date AS tradeDate,
       COALESCE(q.source, l.source) AS source,
@@ -305,7 +336,8 @@ export function queryIndexComparison(db: Database.Database, targetCode: string):
       l.limit_amount_yuan AS limitAmountYuan,
       l.limit_unit AS limitUnit,
       l.data_date AS limitDataDate,
-      l.channel_scope AS channelScope
+      l.channel_scope AS channelScope,
+      l.channel_id AS channelId
     FROM funds f
     LEFT JOIN fund_quotes q ON q.rowid = (
       SELECT q2.rowid
@@ -320,6 +352,13 @@ export function queryIndexComparison(db: Database.Database, targetCode: string):
       FROM purchase_limits l2
       WHERE l2.fund_code = f.code
       ORDER BY l2.data_date DESC,
+        CASE
+          WHEN (SELECT share_class FROM funds fsc WHERE fsc.code = l2.fund_code) IN ('I', 'F', 'E', 'Y', 'D', 'O') AND l2.channel_scope = 'direct' THEN 0
+          WHEN (SELECT share_class FROM funds fsc WHERE fsc.code = l2.fund_code) IN ('A', 'C') AND l2.channel_scope = 'agency' THEN 0
+          ELSE 1
+        END,
+        CASE l2.channel_scope WHEN 'unknown' THEN 1 ELSE 0 END,
+        CASE l2.channel_scope WHEN 'agency' THEN COALESCE(l2.limit_amount_yuan, 1000000000000) ELSE -COALESCE(l2.limit_amount_yuan, 0) END,
         CASE l2.source WHEN 'tiantian-f10-jjfl' THEN 0 WHEN 'tiantian' THEN 1 ELSE 2 END,
         l2.confidence DESC
       LIMIT 1
@@ -386,6 +425,13 @@ export function queryStockConcentration(db: Database.Database, stockCode: string
       FROM purchase_limits l2
       WHERE l2.fund_code = f.code
       ORDER BY l2.data_date DESC,
+        CASE
+          WHEN (SELECT share_class FROM funds fsc WHERE fsc.code = l2.fund_code) IN ('I', 'F', 'E', 'Y', 'D', 'O') AND l2.channel_scope = 'direct' THEN 0
+          WHEN (SELECT share_class FROM funds fsc WHERE fsc.code = l2.fund_code) IN ('A', 'C') AND l2.channel_scope = 'agency' THEN 0
+          ELSE 1
+        END,
+        CASE l2.channel_scope WHEN 'unknown' THEN 1 ELSE 0 END,
+        CASE l2.channel_scope WHEN 'agency' THEN COALESCE(l2.limit_amount_yuan, 1000000000000) ELSE -COALESCE(l2.limit_amount_yuan, 0) END,
         CASE l2.source WHEN 'tiantian-f10-jjfl' THEN 0 WHEN 'tiantian' THEN 1 ELSE 2 END,
         l2.confidence DESC
       LIMIT 1
@@ -498,4 +544,150 @@ function formatHoldingRange(tier: FeeRow): string {
   const min = tier.minHoldingDays ?? 0;
   if (tier.maxHoldingDays == null) return `${min}天以上`;
   return `${min}-${tier.maxHoldingDays}天`;
+}
+
+export interface FundDiscoveryManifestRow {
+  fundCode: string;
+  trackingTargetCode: string;
+  venue: Fund["venue"];
+  shareClass: Fund["shareClass"];
+  discoverySource: string;
+  syncRunId: string;
+  updatedAt: string;
+}
+
+export function replaceFundDiscoveryManifest(db: Database.Database, syncRunId: string, funds: Fund[], updatedAt: string): void {
+  const insert = db.prepare(`
+    INSERT OR REPLACE INTO fund_discovery_manifest (
+      fund_code, tracking_target_code, venue, share_class, discovery_source, sync_run_id, updated_at
+    ) VALUES (
+      @fundCode, @trackingTargetCode, @venue, @shareClass, @discoverySource, @syncRunId, @updatedAt
+    )
+  `);
+  const tx = db.transaction(() => {
+    db.prepare("DELETE FROM fund_discovery_manifest").run();
+    for (const fund of funds) {
+      if (!fund.enabled || !fund.trackingTargetCode) continue;
+      insert.run({
+        fundCode: fund.code,
+        trackingTargetCode: fund.trackingTargetCode,
+        venue: fund.venue,
+        shareClass: fund.shareClass,
+        discoverySource: fund.discoverySource ?? "catalog-seed",
+        syncRunId,
+        updatedAt
+      });
+    }
+  });
+  tx();
+}
+
+export interface DiscoveryProfileGapRow {
+  targetCode: string;
+  fundCode: string;
+  venue: Fund["venue"];
+  syncRunId: string;
+  updatedAt: string;
+}
+
+export function replaceDiscoveryProfileGaps(
+  db: Database.Database,
+  syncRunId: string,
+  gaps: Array<{ targetCode: string; fundCode: string; venue: Fund["venue"] }>,
+  updatedAt: string
+): void {
+  const insert = db.prepare(`
+    INSERT OR REPLACE INTO discovery_profile_gaps (
+      target_code, fund_code, venue, sync_run_id, updated_at
+    ) VALUES (
+      @targetCode, @fundCode, @venue, @syncRunId, @updatedAt
+    )
+  `);
+  const tx = db.transaction(() => {
+    db.prepare("DELETE FROM discovery_profile_gaps").run();
+    for (const gap of gaps) {
+      insert.run({ ...gap, syncRunId, updatedAt });
+    }
+  });
+  tx();
+}
+
+export function queryDiscoveryProfileGaps(db: Database.Database, targetCode?: string): DiscoveryProfileGapRow[] {
+  if (targetCode) {
+    return db.prepare(`
+      SELECT
+        target_code AS targetCode,
+        fund_code AS fundCode,
+        venue,
+        sync_run_id AS syncRunId,
+        updated_at AS updatedAt
+      FROM discovery_profile_gaps
+      WHERE target_code = ?
+      ORDER BY fund_code
+    `).all(targetCode) as DiscoveryProfileGapRow[];
+  }
+  return db.prepare(`
+    SELECT
+      target_code AS targetCode,
+      fund_code AS fundCode,
+      venue,
+      sync_run_id AS syncRunId,
+      updated_at AS updatedAt
+    FROM discovery_profile_gaps
+    ORDER BY target_code, fund_code
+  `).all() as DiscoveryProfileGapRow[];
+}
+
+/** Alias used by sync runner; replaces the full manifest each sync. */
+export const recordFundDiscoveryManifest = replaceFundDiscoveryManifest;
+
+export function queryFundDiscoveryManifest(db: Database.Database): FundDiscoveryManifestRow[] {
+  return db.prepare(`
+    SELECT
+      fund_code AS fundCode,
+      tracking_target_code AS trackingTargetCode,
+      venue,
+      share_class AS shareClass,
+      discovery_source AS discoverySource,
+      sync_run_id AS syncRunId,
+      updated_at AS updatedAt
+    FROM fund_discovery_manifest
+    ORDER BY tracking_target_code, fund_code
+  `).all() as FundDiscoveryManifestRow[];
+}
+
+/** Enabled on-exchange ETFs/LOFs present in funds but missing from the latest discovery manifest. */
+export function queryDiscoveryCoverageGaps(db: Database.Database, targetCode: string): string[] {
+  const manifestCodes = new Set(
+    (db.prepare(`
+      SELECT fund_code AS fundCode
+      FROM fund_discovery_manifest
+      WHERE tracking_target_code = ?
+    `).all(targetCode) as Array<{ fundCode: string }>).map((row) => row.fundCode)
+  );
+  if (manifestCodes.size === 0) return [];
+
+  const enabled = db.prepare(`
+    SELECT code
+    FROM funds
+    WHERE enabled = 1
+      AND tracking_target_code = ?
+      AND venue = 'on_exchange'
+      AND share_class IN ('ETF', 'LOF')
+  `).all(targetCode) as Array<{ code: string }>;
+
+  return enabled.map((row) => row.code).filter((code) => !manifestCodes.has(code));
+}
+
+/** Manifest on-exchange ETFs not enabled in funds (discovery found but universe dropped). */
+export function queryDiscoveryManifestOrphans(db: Database.Database, targetCode: string): string[] {
+  return (db.prepare(`
+    SELECT m.fund_code AS fundCode
+    FROM fund_discovery_manifest m
+    LEFT JOIN funds f ON f.code = m.fund_code AND f.enabled = 1
+    WHERE m.tracking_target_code = ?
+      AND m.venue = 'on_exchange'
+      AND m.share_class IN ('ETF', 'LOF')
+      AND f.code IS NULL
+  `).all(targetCode) as Array<{ fundCode: string }>).map((row) => row.fundCode);
 }

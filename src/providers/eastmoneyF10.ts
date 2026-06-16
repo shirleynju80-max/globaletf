@@ -1,5 +1,6 @@
-import { defaultChannelScopeForShareClass } from "../domain/purchaseLimits";
-import type { FeeTier, Fund, PurchaseLimit, PurchaseStatus } from "../domain/types";
+import { defaultChannelIdForFund, defaultChannelScopeForShareClass } from "../domain/purchaseLimits";
+import { parseMoneyYuan, parsePurchaseStatus } from "../domain/limitText";
+import type { FeeTier, Fund, PurchaseLimit } from "../domain/types";
 import type { DataProvider, ProviderFetchResult } from "./types";
 import { fetchWithTimeout, mapConcurrent } from "./requestUtils";
 
@@ -28,11 +29,16 @@ interface ProviderOptions {
 
 export function parseEastMoneyF10FeesAndLimits(input: ParseInput): { limit: PurchaseLimit; fees: FeeTier[] } {
   const channelScope = defaultChannelScopeForShareClass(input.fund.shareClass);
+  const channelId = defaultChannelIdForFund(input.fund.shareClass, input.fund.fundCompany);
+  // F10 jjfl is the public/aggregate purchase page (代销汇总), even for I/F institutional shares.
+  const limitChannelScope = "agency" as const;
+  const limitChannelId = "eastmoney_aggregate" as const;
   const statusText = lookupCellAfterLabel(input.html, "申购状态");
   const limitText = lookupCellAfterLabel(sectionHtml(input.html, "申购与赎回金额"), "日累计申购限额");
   const base = {
     fundCode: input.fund.code,
     channelScope,
+    channelId,
     source: SOURCE,
     dataDate: input.dataDate,
     syncRunId: input.syncRunId
@@ -45,7 +51,9 @@ export function parseEastMoneyF10FeesAndLimits(input: ParseInput): { limit: Purc
       status: parsePurchaseStatus(statusText),
       limitAmountYuan: parseMoneyYuan(limitText),
       limitUnit: limitText ? "per_day" : "unknown",
-      confidence: 0.9
+      confidence: 0.9,
+      channelScope: limitChannelScope,
+      channelId: limitChannelId
     },
     fees: [
       ...parseOperationFees(sectionHtml(input.html, "运作费用"), base),
@@ -170,24 +178,6 @@ function normalizeText(html: string): string {
     .replace(/&nbsp;/g, " ")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function parsePurchaseStatus(text: string): PurchaseStatus {
-  if (text.includes("暂停")) return "suspended";
-  if (text.includes("限")) return "limited";
-  if (text.includes("开放")) return "open";
-  return "unknown";
-}
-
-function parseMoneyYuan(text: string): number | undefined {
-  if (!text || text.includes("无限")) return undefined;
-  const match = text.match(/([\d.]+)\s*(亿|万)?元/);
-  if (!match) return undefined;
-  const value = Number(match[1]);
-  if (!Number.isFinite(value)) return undefined;
-  if (match[2] === "亿") return value * 100000000;
-  if (match[2] === "万") return value * 10000;
-  return value;
 }
 
 function parseLastPercent(text: string): number | undefined {

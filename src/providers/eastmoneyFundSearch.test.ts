@@ -8,6 +8,7 @@ const sampleScript = `var r = [
   ["021778","GFNZ100ETFLJQDIIRMBF","广发纳指100ETF联接(QDII)人民币F","指数型-海外股票","GUANGFA"],
   ["016532","JSNSDK100ETFFQLJQDIIARMB","嘉实纳斯达克100ETF发起联接(QDII)A人民币","指数型-海外股票","JIASHI"],
   ["016533","JSNSDK100ETFFQLJQDIICRMB","嘉实纳斯达克100ETF发起联接(QDII)C人民币","指数型-海外股票","JIASHI"],
+  ["021000","NFNSDK100ZSFQQDIII","南方纳斯达克100指数发起(QDII)I","指数型-海外股票","NANFANG"],
   ["159513","NSDK100ETFDC","纳斯达克100ETF大成","指数型-海外股票","DACHENG"],
   ["160213","GTNSDK100ZS","国泰纳斯达克100指数","指数型-海外股票","GUOTAI"],
   ["000055","GFNSDK100ETFLJMYQDIIA","广发纳斯达克100ETF联接美元(QDII)A","指数型-海外股票","GUANGFA"],
@@ -94,6 +95,7 @@ describe("East Money fund search parser", () => {
       ["012870", "C", "off_exchange"],
       ["016532", "A", "off_exchange"],
       ["016533", "C", "off_exchange"],
+      ["021000", "I", "off_exchange"],
       ["021778", "F", "off_exchange"],
       ["159513", "ETF", "on_exchange"],
       ["159632", "ETF", "on_exchange"],
@@ -101,6 +103,34 @@ describe("East Money fund search parser", () => {
     ]);
     expect(funds.find((fund) => fund.code === "000055")).toBeUndefined();
     expect(funds.find((fund) => fund.code === "159630")).toBeUndefined();
+  });
+
+  it("matches short on-exchange names that omit the index number", () => {
+    const funds = selectFundsForTarget(parseEastMoneyFundSearch(`var r = [
+      ["159941","NZETFGF","纳指ETF广发","指数型-海外股票","GF"],
+      ["513870","NZETFFG","纳指ETF富国","指数型-海外股票","FG"]
+    ];`), {
+      targetCode: "NASDAQ_100",
+      targetName: "纳斯达克100",
+      aliases: ["纳指100", "纳斯达克100"],
+      seedFundCodes: []
+    });
+
+    expect(funds.map((fund) => fund.code)).toEqual(["159941", "513870"]);
+  });
+
+  it("excludes domestic CSI 500 products from S&P 500 target matching", () => {
+    const funds = selectFundsForTarget(parseEastMoneyFundSearch(`var r = [
+      ["510500","ZZ500ETF","中证500ETF","指数型-股票","ZZ"],
+      ["513500","BP500ETF","标普500ETF","指数型-海外股票","BP"]
+    ];`), {
+      targetCode: "SP_500",
+      targetName: "标普500",
+      aliases: ["标普 500", "sp500"],
+      seedFundCodes: []
+    });
+
+    expect(funds.map((fund) => fund.code)).toEqual(["513500"]);
   });
 });
 

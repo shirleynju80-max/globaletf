@@ -1,7 +1,9 @@
 import type Database from "better-sqlite3";
-import { queryIndexComparison, queryStockConcentration, querySyncStatus } from "../db/repositories";
+import { queryIndexComparison, queryStockConcentration, querySyncStatus, queryDiscoveryCoverageGaps, queryDiscoveryManifestOrphans, queryDiscoveryProfileGaps, queryFundDiscoveryManifest } from "../db/repositories";
+import { CATALOG_FUNDS, CATALOG_DIRECT_SHARE_FUNDS } from "../domain/fundCatalog";
 import { INDEX_TARGETS, INDEX_TARGET_FUND_SEEDS } from "../domain/targets";
 import { STOCK_SCAN_FUNDS } from "../domain/stockScanUniverse";
+import { queryFundTrackingProfileMismatches } from "../sync/trackingProfileSync";
 
 export interface AcceptanceCheck {
   key: string;
@@ -22,6 +24,7 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
     comparison: queryIndexComparison(db, target.code)
   }));
   const nasdaqComparison = comparisons.find((entry) => entry.target.code === "NASDAQ_100")?.comparison ?? { onExchange: [], offExchange: [] };
+  const nikkeiComparison = comparisons.find((entry) => entry.target.code === "NIKKEI_225")?.comparison ?? { onExchange: [], offExchange: [] };
   const stockConcentration = queryStockConcentration(db, "NVDA");
   const nasdaqOnExchangePricedRows = nasdaqComparison.onExchange.filter((row) => row.closePrice != null);
   const nasdaqOffExchangeLimitRows = nasdaqComparison.offExchange.filter((row) => row.limitAmountYuan != null || row.status === "open" || row.status === "limited");
@@ -68,6 +71,23 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
       message: `NASDAQ_100 on-exchange=${nasdaqComparison.onExchange.length}, off-exchange=${nasdaqComparison.offExchange.length}`
     },
     {
+      key: "onExchangeEtfCoverage",
+      ok: nasdaqComparison.onExchange.filter((row) => row.shareClass === "ETF").length >= 12,
+      message: `NASDAQ_100 on-exchange ETF count=${nasdaqComparison.onExchange.filter((row) => row.shareClass === "ETF").length} (expect >= 12)`
+    },
+    {
+      key: "onExchangeNikkeiEtfCoverage",
+      ok: nikkeiComparison.onExchange.filter((row) => row.shareClass === "ETF").length >= 3,
+      message: `NIKKEI_225 on-exchange ETF count=${nikkeiComparison.onExchange.filter((row) => row.shareClass === "ETF").length} (expect >= 3)`
+    },
+    ...INDEX_TARGETS.map((target) => checkDiscoveryManifestForTarget(db, target.code)),
+    ...INDEX_TARGETS.map((target) => checkDiscoveryProfileGapsForTarget(db, target.code)),
+    {
+      key: "trackingProfiles",
+      ok: queryFundTrackingProfileMismatches(db, trackingProfileFundCodes(db)).length === 0,
+      message: `discovery-backed tracking profile mismatches=${queryFundTrackingProfileMismatches(db, trackingProfileFundCodes(db)).join(",") || "none"}`
+    },
+    {
       key: "onExchangeQuotes",
       ok: nasdaqComparison.onExchange.some((row) => row.closePrice != null && row.tradeDate),
       message: "At least one on-exchange ETF has close price and trade date"
@@ -92,6 +112,7 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
       ok: nasdaqOffExchangeLimitRows.every((row) => Boolean(row.limitDataDate)),
       message: `NASDAQ_100 off-exchange limit rows with dates=${nasdaqOffExchangeLimitRows.filter((row) => Boolean(row.limitDataDate)).length}/${nasdaqOffExchangeLimitRows.length}`
     },
+    checkCatalogDirectShareLimits(db),
     {
       key: "offExchangeFees",
       ok: nasdaqOffExchangeFeeRows.length > 0,
@@ -136,6 +157,66 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
     ok: checks.every((check) => check.ok),
     checks
   };
+}
+
+function checkDiscoveryManifestForTarget(db: Database.Database, targetCode: string): AcceptanceCheck {
+  const manifest = queryFundDiscoveryManifest(db).filter((row) => row.trackingTargetCode === targetCode);
+  const onExchangeManifest = manifest.filter((row) => row.venue === "on_exchange" && (row.shareClass === "ETF" || row.shareClass === "LOF"));
+  const automatedOnExchange = onExchangeManifest.filter((row) => row.discoverySource !== "catalog-seed");
+  const profileBacked = onExchangeManifest.filter((row) =>
+    row.discoverySource === "tracking-profile" ||
+    row.discoverySource === "screener-name" ||
+    row.discoverySource === "fund-family"
+  );
+  const coverageGaps = queryDiscoveryCoverageGaps(db, targetCode);
+  const orphans = queryDiscoveryManifestOrphans(db, targetCode);
+
+  return {
+    key: `discoveryManifest.${targetCode}`,
+    ok: manifest.length > 0 &&
+      coverageGaps.length === 0 &&
+      orphans.length === 0 &&
+      automatedOnExchange.length > 0 &&
+      profileBacked.length > 0,
+    message: `${targetCode} manifest=${manifest.length}, on-exchange=${onExchangeManifest.length}, automated-on-exchange=${automatedOnExchange.length}, profile/screener=${profileBacked.length}, enabled-gaps=${coverageGaps.join(",") || "none"}, orphans=${orphans.join(",") || "none"}`
+  };
+}
+
+function checkDiscoveryProfileGapsForTarget(db: Database.Database, targetCode: string): AcceptanceCheck {
+  const gaps = queryDiscoveryProfileGaps(db, targetCode);
+  return {
+    key: `discoveryProfileGaps.${targetCode}`,
+    ok: gaps.length === 0,
+    message: `${targetCode} profile-verified gaps=${gaps.map((gap) => gap.fundCode).join(",") || "none"}`
+  };
+}
+
+function trackingProfileFundCodes(db: Database.Database): string[] {
+  const manifestCodes = queryFundDiscoveryManifest(db).map((row) => row.fundCode);
+  return manifestCodes.length > 0 ? manifestCodes : CATALOG_FUNDS.map((fund) => fund.code);
+}
+
+function checkCatalogDirectShareLimits(db: Database.Database): AcceptanceCheck {
+  const missing = queryCatalogDirectShareLimitGaps(db);
+  return {
+    key: "catalogDirectShareLimits",
+    ok: missing.length === 0,
+    message: `catalog I/F fundco direct limits missing=${missing.join(",") || "none"} (${CATALOG_DIRECT_SHARE_FUNDS.length} expected)`
+  };
+}
+
+export function queryCatalogDirectShareLimitGaps(db: Database.Database): string[] {
+  const hasDirectLimit = db.prepare(`
+    SELECT 1
+    FROM purchase_limits
+    WHERE fund_code = ? AND share_class = ? AND channel_scope = 'direct'
+      AND source LIKE 'fundco-%' AND data_date IS NOT NULL AND data_date <> ''
+      AND status IN ('open', 'limited', 'suspended')
+    LIMIT 1
+  `);
+  return CATALOG_DIRECT_SHARE_FUNDS
+    .filter((fund) => !hasDirectLimit.get(fund.code, fund.shareClass))
+    .map((fund) => fund.code);
 }
 
 function checkStatusMetadata(status: ReturnType<typeof querySyncStatus>): AcceptanceCheck {

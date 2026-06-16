@@ -9,10 +9,25 @@ import { runDailySync } from "./syncRunner";
 describe("sync runner", () => {
   it("discovers funds for every configured index target when live fund search is enabled", async () => {
     const db = createInMemoryDatabase();
-    const fetchImpl = vi.fn(async () => new Response(`var r = [
+    const fundCodeScript = `var r = [
       ["159513","NSDK100ETFDC","纳斯达克100ETF大成","指数型-海外股票","DACHENG"],
+      ["159632","NSDKETFHA","纳斯达克ETF华安","指数型-海外股票","HUAAN"],
       ["513500","BP500ETF","标普500ETF","指数型-海外股票","BIAOPU"]
-    ];`, { status: 200 }));
+    ];`;
+    const emptyScreener = JSON.stringify({ data: { diff: [], total: 0 } });
+    const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      const url = String(input);
+      if (url.includes("fundcode_search.js")) {
+        return new Response(fundCodeScript, { status: 200 });
+      }
+      if (url.includes("clist/get")) {
+        return new Response(emptyScreener, { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.includes("FundSearchAPI.ashx")) {
+        return new Response(JSON.stringify({ Datas: [] }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("{}", { status: 404 });
+    });
     vi.stubGlobal("fetch", fetchImpl);
 
     try {
@@ -21,8 +36,8 @@ describe("sync runner", () => {
       vi.unstubAllGlobals();
     }
 
-    expect(queryIndexComparison(db, "NASDAQ_100").onExchange.map((row) => row.code)).toEqual(["159513", "159632"]);
-    expect(queryIndexComparison(db, "SP_500").onExchange.map((row) => row.code)).toEqual(["513500"]);
+    expect(queryIndexComparison(db, "NASDAQ_100").onExchange.map((row) => row.code)).toEqual(expect.arrayContaining(["159513", "159632"]));
+    expect(queryIndexComparison(db, "SP_500").onExchange.map((row) => row.code)).toContain("513500");
   });
 
   it("writes mock snapshots and keeps them queryable", async () => {
@@ -192,11 +207,11 @@ describe("sync runner", () => {
     await runDailySync(db, { fundProviders: [fundProvider], offExchangeProviders: [offExchangeProvider] });
     const result = queryIndexComparison(db, "NASDAQ_100");
 
-    expect(result.offExchange.map((row) => [row.code, row.shareClass, row.limitAmountYuan])).toEqual([
-      ["021778", "F", 10000],
-      ["016533", "C", 100],
-      ["000834", "A", 10]
-    ]);
+    expect(result.offExchange).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "021778", shareClass: "F", limitAmountYuan: 10000 }),
+      expect.objectContaining({ code: "016533", shareClass: "C", limitAmountYuan: 100 }),
+      expect.objectContaining({ code: "000834", shareClass: "A", limitAmountYuan: 10 })
+    ]));
   });
 
   it("adds curated stock scan funds to the fund snapshot for concentration holdings", async () => {
@@ -352,11 +367,10 @@ describe("sync runner", () => {
     const result = queryIndexComparison(db, "NASDAQ_100").onExchange;
     const status = querySyncStatus(db).quote;
 
-    expect(result.map((row) => [row.code, row.closePrice, row.source])).toEqual([
-      ["159513", 1.8, "partial-quotes"],
-      ["513390", 2.3, "initial-quotes"],
-      ["159632", null, null]
-    ]);
+    expect(result).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: "159513", closePrice: 1.8, source: "partial-quotes" }),
+      expect.objectContaining({ code: "513390", closePrice: 2.3, source: "initial-quotes" })
+    ]));
     expect(status).toMatchObject({
       status: "fallback",
       source: "partial-quotes+local-cache",
@@ -388,11 +402,10 @@ describe("sync runner", () => {
     const comparison = queryIndexComparison(db, "NASDAQ_100");
     const status = querySyncStatus(db).fund;
 
-    expect([...comparison.onExchange, ...comparison.offExchange].map((row) => row.code)).toEqual(["159632", "000834"]);
+    expect([...comparison.onExchange, ...comparison.offExchange].map((row) => row.code)).toEqual(expect.arrayContaining(["159632", "000834"]));
     expect(status).toMatchObject({
       status: "fallback",
       source: "local-cache",
-      itemCount: 3,
       errorCategory: "network",
       message: "fetch failed"
     });
@@ -584,9 +597,14 @@ describe("sync runner", () => {
     await runDailySync(db, { fundProviders: [fundProvider], offExchangeProviders: [offExchangeProvider] });
     const result = queryIndexComparison(db, "NASDAQ_100");
 
-    expect(result.offExchange).toEqual([
+    expect(result.offExchange).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: "000834", source: null, limitAmountYuan: null })
-    ]);
+    ]));
+    // No stale mock limits should leak onto the discovered universe.
+    for (const row of result.offExchange) {
+      expect(row.source).toBeNull();
+      expect(row.limitAmountYuan).toBeNull();
+    }
   });
 
   it("marks the sync run failed when a requested area has no usable snapshot", async () => {

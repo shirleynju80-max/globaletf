@@ -1,15 +1,18 @@
 import type Database from "better-sqlite3";
-import { insertSnapshotBundle, recordProviderResults, recordSyncRun, recordSyncStatus, type ProviderResultRow, type SyncStatusRow } from "../db/repositories";
+import { insertSnapshotBundle, recordFundDiscoveryManifest, recordProviderResults, recordSyncRun, recordSyncStatus, replaceDiscoveryProfileGaps, type ProviderResultRow, type SyncStatusRow } from "../db/repositories";
 import { INDEX_TARGETS, INDEX_TARGET_FUND_SEED_FUNDS, INDEX_TARGET_FUND_SEEDS } from "../domain/targets";
 import type { FeeTier, Fund, FundHolding, FundQuote, PurchaseLimit } from "../domain/types";
 import { STOCK_SCAN_FUNDS } from "../domain/stockScanUniverse";
 import { createEastMoneyMultiTargetFundSearchProvider } from "../providers/eastmoneyFundSearch";
+import { createAgencyAugmentedFundDiscoveryProvider } from "../providers/agencyFundDiscovery";
 import { createEastMoneyHoldingsProvider } from "../providers/eastmoneyHoldings";
 import { createEastMoneyOnExchangeQuoteProvider } from "../providers/eastmoneyOnExchangeQuotes";
 import { mockFees, mockFunds, mockHoldings, mockLimits, mockQuotes } from "../providers/mockProviders";
-import { createEastMoneyF10OffExchangeProvider, type OffExchangeFeeLimitSnapshot } from "../providers/eastmoneyF10";
+import { createMergedOffExchangeProvider, type OffExchangeFeeLimitSnapshot } from "../providers/directChannelLimits";
 import { runProviderChain } from "../providers/providerChain";
 import type { DataProvider, ProviderAttempt } from "../providers/types";
+import { enrichQuoteWithMatchedIopv } from "./iopvQuoteEnrichment";
+import { syncFundTrackingProfiles, applyProfileDiscoverySources } from "./trackingProfileSync";
 
 export type SyncArea = "fund" | "quote" | "offExchange" | "holding";
 
@@ -28,6 +31,7 @@ interface ResolvedData<T> {
   isFallback: boolean;
   providerResults: ProviderAttempt[];
   status: Omit<SyncStatusRow, "area" | "updatedAt">;
+  discoveryProfileGaps?: Array<{ targetCode: string; fundCode: string; venue: string }>;
 }
 
 interface ResolvedOffExchange {
@@ -43,8 +47,15 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
   const startedAt = new Date().toISOString();
   const now = options.now ?? Date.now;
   const fundStartedAt = now();
-  const fundSnapshot = await resolveFunds(db, options);
+  let fundSnapshot = await resolveFunds(db, options);
   const fundDurationMs = elapsedMs(now, fundStartedAt);
+  if (options.useLiveProviders) {
+    const profiles = await syncFundTrackingProfiles(db, fundSnapshot.data).catch(() => []);
+    fundSnapshot = {
+      ...fundSnapshot,
+      data: applyProfileDiscoverySources(fundSnapshot.data, profiles)
+    };
+  }
   let quotes: ResolvedData<FundQuote[]> | undefined;
   let quoteDurationMs: number | undefined;
   if (areas.has("quote")) {
@@ -67,6 +78,7 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
     holdingDurationMs = elapsedMs(now, holdingStartedAt);
   }
 
+  const updatedAt = new Date().toISOString();
   insertSnapshotBundle(db, {
     syncRunId,
     funds: fundSnapshot.data,
@@ -75,8 +87,8 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
     fees: stampSyncRunId(offExchangeSnapshot?.data.fees ?? [], syncRunId),
     holdings: stampSyncRunId(holdings?.data ?? [], syncRunId)
   });
-
-  const updatedAt = new Date().toISOString();
+  recordFundDiscoveryManifest(db, syncRunId, fundSnapshot.data, updatedAt);
+  replaceDiscoveryProfileGaps(db, syncRunId, fundSnapshot.discoveryProfileGaps ?? [], updatedAt);
   const statuses: SyncStatusRow[] = [];
   if (areas.has("fund")) statuses.push({ area: "fund", durationMs: fundDurationMs, ...fundSnapshot.status, updatedAt });
   if (quotes && quoteDurationMs != null) statuses.push({ area: "quote", durationMs: quoteDurationMs, ...quotes.status, updatedAt });
@@ -116,29 +128,43 @@ function elapsedMs(now: () => number, startedAt: number): number {
 }
 
 async function resolveFunds(db: Database.Database, options: DailySyncOptions): Promise<ResolvedData<Fund[]>> {
+  const indexTargets = INDEX_TARGETS.map((target) => ({
+    targetCode: target.code,
+    targetName: target.name,
+    aliases: target.aliases,
+    seedFundCodes: INDEX_TARGET_FUND_SEEDS[target.code] ?? []
+  }));
   const providers =
     options.fundProviders ??
     (options.useLiveProviders
-      ? [createEastMoneyMultiTargetFundSearchProvider({
-          targets: INDEX_TARGETS.map((target) => ({
-            targetCode: target.code,
-            targetName: target.name,
-            aliases: target.aliases,
-            seedFundCodes: INDEX_TARGET_FUND_SEEDS[target.code] ?? []
-          }))
-        })]
+      ? [
+          createAgencyAugmentedFundDiscoveryProvider(
+            createEastMoneyMultiTargetFundSearchProvider({ targets: indexTargets }),
+            { targets: indexTargets }
+          )
+        ]
       : []);
 
   if (providers.length === 0) return resolvedOk(withCuratedFunds(mockFunds), "mock", latestFundDate(), true);
 
   try {
     const result = await runProviderChain(providers);
-    return resolvedOk(withCuratedFunds(result.data), successSource(result.providerResults), successDataDate(result.providerResults), false, undefined, undefined, result.providerResults);
+    return resolvedOk(
+      withCuratedFunds(result.data),
+      successSource(result.providerResults),
+      successDataDate(result.providerResults),
+      false,
+      undefined,
+      undefined,
+      result.providerResults,
+      result.discoveryProfileGaps
+    );
   } catch (error) {
     const failure = providerFailure(error, providers);
     const attempts = providerAttempts(error);
-    const cachedFunds = withCuratedFunds(queryCachedFunds(db));
-    if (cachedFunds.length > STOCK_SCAN_FUNDS.length + INDEX_TARGET_FUND_SEED_FUNDS.length) {
+    const rawCachedFunds = queryCachedFunds(db);
+    if (rawCachedFunds.length > 0) {
+      const cachedFunds = withCuratedFunds(rawCachedFunds);
       return resolvedFallback(cachedFunds, "local-cache", latestFundDate(), failure, 0, cachedFunds.length, attempts);
     }
     return resolvedFallback(withCuratedFunds(mockFunds), "mock", latestFundDate(), failure, undefined, undefined, attempts);
@@ -147,22 +173,43 @@ async function resolveFunds(db: Database.Database, options: DailySyncOptions): P
 
 function withCuratedFunds(funds: Fund[]): Fund[] {
   const byCode = new Map<string, Fund>();
-  for (const fund of [...STOCK_SCAN_FUNDS, ...INDEX_TARGET_FUND_SEED_FUNDS, ...funds]) {
-    byCode.set(fund.code, fund);
+  for (const fund of funds) byCode.set(fund.code, fund);
+
+  // The curated catalog is authoritative for structural fields so that name-based
+  // discovery cannot drop known products or lose share-class / parent relationships.
+  for (const curated of [...STOCK_SCAN_FUNDS, ...INDEX_TARGET_FUND_SEED_FUNDS]) {
+    const discovered = byCode.get(curated.code);
+    if (!discovered) {
+      byCode.set(curated.code, { ...curated, discoverySource: "catalog-seed" });
+      continue;
+    }
+    byCode.set(curated.code, {
+      ...discovered,
+      venue: curated.venue,
+      shareClass: curated.shareClass,
+      fundType: curated.fundType || discovered.fundType,
+      trackingTargetCode: curated.trackingTargetCode ?? discovered.trackingTargetCode,
+      parentFundCode: curated.parentFundCode ?? discovered.parentFundCode,
+      fundCompany: discovered.fundCompany?.trim() || curated.fundCompany,
+      name: discovered.name || curated.name,
+      enabled: true,
+      discoverySource: discovered.discoverySource ?? "catalog-seed"
+    });
   }
   return [...byCode.values()];
 }
 
 async function resolveQuotes(db: Database.Database, options: DailySyncOptions, fundSnapshot: ResolvedData<Fund[]>): Promise<ResolvedData<FundQuote[]>> {
   const providers = options.quoteProviders ?? (options.useLiveProviders ? [createEastMoneyOnExchangeQuoteProvider(fundSnapshot.data)] : []);
-  if (providers.length === 0) return resolvedOk(mockQuotes, sourceFromQuotes(mockQuotes), latestQuoteDate(mockQuotes), true);
+  if (providers.length === 0) return resolvedOk(enrichQuotes(db, mockQuotes), sourceFromQuotes(mockQuotes), latestQuoteDate(mockQuotes), true);
 
   try {
     const result = await runProviderChain(providers);
+    const enriched = enrichQuotes(db, result.data);
     const cachedQuotes = queryCachedQuotes(db, fundSnapshot.data, new Set(result.data.map((quote) => quote.fundCode)));
     if (cachedQuotes.length > 0) {
       return resolvedFallback(
-        [...result.data, ...cachedQuotes],
+        [...enriched, ...cachedQuotes],
         `${sourceFromQuotes(result.data) ?? successSource(result.providerResults)}+local-cache`,
         latestQuoteDate(result.data) ?? successDataDate(result.providerResults),
         { source: null, errorCategory: null, message: null },
@@ -171,7 +218,7 @@ async function resolveQuotes(db: Database.Database, options: DailySyncOptions, f
         result.providerResults
       );
     }
-    return resolvedOk(result.data, sourceFromQuotes(result.data) ?? successSource(result.providerResults), latestQuoteDate(result.data) ?? successDataDate(result.providerResults), false, result.data.length, 0, result.providerResults);
+    return resolvedOk(enriched, sourceFromQuotes(result.data) ?? successSource(result.providerResults), latestQuoteDate(result.data) ?? successDataDate(result.providerResults), false, result.data.length, 0, result.providerResults);
   } catch (error) {
     const failure = providerFailure(error, providers);
     const attempts = providerAttempts(error);
@@ -180,12 +227,16 @@ async function resolveQuotes(db: Database.Database, options: DailySyncOptions, f
       return resolvedFallback(cachedQuotes, "local-cache", latestQuoteDate(cachedQuotes), failure, 0, cachedQuotes.length, attempts);
     }
     if (!fundSnapshot.isFallback) return resolvedError([], failure, attempts);
-    return resolvedFallback(mockQuotes, sourceFromQuotes(mockQuotes), latestQuoteDate(mockQuotes), failure, undefined, undefined, attempts);
+    return resolvedFallback(enrichQuotes(db, mockQuotes), sourceFromQuotes(mockQuotes), latestQuoteDate(mockQuotes), failure, undefined, undefined, attempts);
   }
 }
 
+function enrichQuotes(db: Database.Database, quotes: FundQuote[]): FundQuote[] {
+  return quotes.map((quote) => enrichQuoteWithMatchedIopv(db, quote, null, null));
+}
+
 async function resolveOffExchangeSnapshot(db: Database.Database, options: DailySyncOptions, fundSnapshot: ResolvedData<Fund[]>): Promise<ResolvedOffExchange> {
-  const providers = options.offExchangeProviders ?? (options.useLiveProviders ? [createEastMoneyF10OffExchangeProvider(fundSnapshot.data)] : []);
+  const providers = options.offExchangeProviders ?? (options.useLiveProviders ? [createMergedOffExchangeProvider(fundSnapshot.data)] : []);
   if (providers.length === 0) return resolvedOffExchangeOk({ limits: mockLimits, fees: mockFees }, "mock", true);
 
   try {
@@ -218,11 +269,21 @@ async function resolveHoldings(options: DailySyncOptions, fundSnapshot: Resolved
   }
 }
 
-function resolvedOk<T>(data: T[], source: string | null, dataDate: string | null, isFallback: boolean, freshItemCount?: number, cachedItemCount?: number, providerResults: ProviderAttempt[] = []): ResolvedData<T[]> {
+function resolvedOk<T>(
+  data: T[],
+  source: string | null,
+  dataDate: string | null,
+  isFallback: boolean,
+  freshItemCount?: number,
+  cachedItemCount?: number,
+  providerResults: ProviderAttempt[] = [],
+  discoveryProfileGaps?: Array<{ targetCode: string; fundCode: string; venue: string }>
+): ResolvedData<T[]> {
   return {
     data,
     isFallback,
     providerResults,
+    discoveryProfileGaps,
     status: { status: "ok", source, dataDate, itemCount: data.length, freshItemCount, cachedItemCount }
   };
 }

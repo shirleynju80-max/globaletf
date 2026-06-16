@@ -18,13 +18,13 @@ describe("targets", () => {
     expect(findTargetByCode("英伟达")?.code).toBe("NVDA");
   });
 
-  it("keeps curated fund seeds for known index coverage gaps", () => {
+  it("keeps anchor fund seeds for discovery bias", () => {
     expect(INDEX_TARGET_FUND_SEEDS.NASDAQ_100).toContain("159632");
     expect(INDEX_TARGET_FUND_SEED_FUNDS).toContainEqual(expect.objectContaining({
-      code: "159632",
+      code: "021000",
       trackingTargetCode: "NASDAQ_100",
-      venue: "on_exchange",
-      shareClass: "ETF"
+      venue: "off_exchange",
+      shareClass: "I"
     }));
   });
 });

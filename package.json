@@ -14,7 +14,8 @@
     "sync:limits": "tsx src/sync/cli.ts limits",
     "sync:fees": "tsx src/sync/cli.ts fees",
     "sync:holdings": "tsx src/sync/cli.ts holdings",
-    "acceptance": "tsx src/acceptance/cli.ts"
+    "acceptance": "tsx src/acceptance/cli.ts",
+    "audit:tracking": "tsx src/audit/cli.ts"
   },
   "dependencies": {
     "@vitejs/plugin-react": "^5.0.0",

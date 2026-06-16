@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+mkdir -p logs
+LOG="logs/daily-sync.log"
+TS="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+
+{
+  echo "=== daily-sync start $TS ==="
+  npm run sync:daily
+  npm run acceptance
+  echo "=== daily-sync ok $(date -u +"%Y-%m-%dT%H:%M:%SZ") ==="
+} >>"$LOG" 2>&1

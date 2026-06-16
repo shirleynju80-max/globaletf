@@ -20,6 +20,11 @@ export function migrate(db: Database.Database): void {
       closing_premium_discount_rate REAL,
       unit_nav REAL,
       nav_date TEXT,
+      iopv REAL,
+      iopv_time TEXT,
+      iopv_premium_discount_rate REAL,
+      price_time TEXT,
+      iopv_aligned INTEGER,
       turnover REAL,
       trade_date TEXT NOT NULL,
       source TEXT NOT NULL,
@@ -34,11 +39,20 @@ export function migrate(db: Database.Database): void {
       limit_amount_yuan REAL,
       limit_unit TEXT,
       channel_scope TEXT NOT NULL,
+      channel_id TEXT NOT NULL DEFAULT 'aggregate',
       source TEXT NOT NULL,
       data_date TEXT NOT NULL,
       confidence REAL NOT NULL,
       sync_run_id TEXT NOT NULL,
-      PRIMARY KEY (fund_code, share_class, channel_scope, data_date, source)
+      PRIMARY KEY (fund_code, share_class, channel_scope, channel_id, data_date, source)
+    );
+
+    CREATE TABLE IF NOT EXISTS fund_tracking_profiles (
+      fund_code TEXT PRIMARY KEY,
+      tracking_index TEXT,
+      benchmark TEXT,
+      verified_ok INTEGER NOT NULL,
+      verified_at TEXT NOT NULL
     );
 
     CREATE TABLE IF NOT EXISTS fund_fees (
@@ -103,12 +117,34 @@ export function migrate(db: Database.Database): void {
       PRIMARY KEY (sync_run_id, area, attempt_order),
       FOREIGN KEY (sync_run_id) REFERENCES sync_runs(sync_run_id)
     );
+
+    CREATE TABLE IF NOT EXISTS fund_discovery_manifest (
+      fund_code TEXT PRIMARY KEY,
+      tracking_target_code TEXT NOT NULL,
+      venue TEXT NOT NULL,
+      share_class TEXT NOT NULL,
+      discovery_source TEXT NOT NULL,
+      sync_run_id TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS discovery_profile_gaps (
+      target_code TEXT NOT NULL,
+      fund_code TEXT NOT NULL,
+      venue TEXT NOT NULL,
+      sync_run_id TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (target_code, fund_code)
+    );
   `);
 
   relaxLegacyQuotePremiumConstraint(db);
   addSyncStatusCountColumns(db);
   addProviderResultColumns(db);
   addQuoteNavColumns(db);
+  addQuoteIopvColumns(db);
+  addQuoteAlignmentColumns(db);
+  addPurchaseLimitChannelIdColumn(db);
 }
 
 function relaxLegacyQuotePremiumConstraint(db: Database.Database): void {
@@ -186,4 +222,73 @@ function addQuoteNavColumns(db: Database.Database): void {
   if (!names.has("nav_date")) {
     db.exec("ALTER TABLE fund_quotes ADD COLUMN nav_date TEXT");
   }
+}
+
+function addQuoteIopvColumns(db: Database.Database): void {
+  const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'fund_quotes'").get();
+  if (!table) return;
+
+  const columns = db.prepare("PRAGMA table_info(fund_quotes)").all() as Array<{ name: string }>;
+  const names = new Set(columns.map((column) => column.name));
+
+  if (!names.has("iopv")) {
+    db.exec("ALTER TABLE fund_quotes ADD COLUMN iopv REAL");
+  }
+  if (!names.has("iopv_time")) {
+    db.exec("ALTER TABLE fund_quotes ADD COLUMN iopv_time TEXT");
+  }
+  if (!names.has("iopv_premium_discount_rate")) {
+    db.exec("ALTER TABLE fund_quotes ADD COLUMN iopv_premium_discount_rate REAL");
+  }
+}
+
+function addQuoteAlignmentColumns(db: Database.Database): void {
+  const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'fund_quotes'").get();
+  if (!table) return;
+
+  const columns = db.prepare("PRAGMA table_info(fund_quotes)").all() as Array<{ name: string }>;
+  const names = new Set(columns.map((column) => column.name));
+
+  if (!names.has("price_time")) {
+    db.exec("ALTER TABLE fund_quotes ADD COLUMN price_time TEXT");
+  }
+  if (!names.has("iopv_aligned")) {
+    db.exec("ALTER TABLE fund_quotes ADD COLUMN iopv_aligned INTEGER");
+  }
+}
+
+function addPurchaseLimitChannelIdColumn(db: Database.Database): void {
+  const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'purchase_limits'").get();
+  if (!table) return;
+
+  const columns = db.prepare("PRAGMA table_info(purchase_limits)").all() as Array<{ name: string }>;
+  if (columns.some((column) => column.name === "channel_id")) return;
+
+  db.exec(`
+    ALTER TABLE purchase_limits RENAME TO purchase_limits_legacy;
+
+    CREATE TABLE purchase_limits (
+      fund_code TEXT NOT NULL,
+      share_class TEXT NOT NULL,
+      status TEXT NOT NULL,
+      limit_amount_yuan REAL,
+      limit_unit TEXT,
+      channel_scope TEXT NOT NULL,
+      channel_id TEXT NOT NULL DEFAULT 'aggregate',
+      source TEXT NOT NULL,
+      data_date TEXT NOT NULL,
+      confidence REAL NOT NULL,
+      sync_run_id TEXT NOT NULL,
+      PRIMARY KEY (fund_code, share_class, channel_scope, channel_id, data_date, source)
+    );
+
+    INSERT INTO purchase_limits (
+      fund_code, share_class, status, limit_amount_yuan, limit_unit, channel_scope, channel_id, source, data_date, confidence, sync_run_id
+    )
+    SELECT
+      fund_code, share_class, status, limit_amount_yuan, limit_unit, channel_scope, 'aggregate', source, data_date, confidence, sync_run_id
+    FROM purchase_limits_legacy;
+
+    DROP TABLE purchase_limits_legacy;
+  `);
 }

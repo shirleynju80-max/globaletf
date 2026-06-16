@@ -318,4 +318,35 @@ describe("repositories", () => {
       message: "blocked"
     });
   });
+
+  it("removes stale F10 direct limits when a new limit snapshot is inserted", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [{ code: "021000", name: "南方I", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "I", enabled: true }],
+      quotes: [],
+      limits: [
+        { fundCode: "021000", shareClass: "I", status: "limited", limitUnit: "per_day", channelScope: "direct", channelId: "nfjj", source: "tiantian-f10-jjfl", dataDate: "2026-06-10", confidence: 0.9, syncRunId: "run-1" },
+        { fundCode: "021000", shareClass: "I", status: "limited", limitAmountYuan: 5000, limitUnit: "per_day", channelScope: "agency", channelId: "eastmoney_aggregate", source: "tiantian-f10-jjfl", dataDate: "2026-06-15", confidence: 0.9, syncRunId: "run-2" }
+      ],
+      fees: [],
+      holdings: []
+    });
+    insertSnapshotBundle(db, {
+      syncRunId: "run-2",
+      funds: [{ code: "021000", name: "南方I", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "I", enabled: true }],
+      quotes: [],
+      limits: [
+        { fundCode: "021000", shareClass: "I", status: "limited", limitAmountYuan: 5000, limitUnit: "per_day", channelScope: "direct", channelId: "nfjj", source: "fundco-announcement-nfjj", dataDate: "2026-04-08", confidence: 0.95, syncRunId: "run-2" }
+      ],
+      fees: [],
+      holdings: []
+    });
+
+    const rows = db.prepare("SELECT channel_scope, source, limit_amount_yuan FROM purchase_limits WHERE fund_code = '021000' ORDER BY channel_scope").all();
+    expect(rows).toEqual([
+      { channel_scope: "agency", source: "tiantian-f10-jjfl", limit_amount_yuan: 5000 },
+      { channel_scope: "direct", source: "fundco-announcement-nfjj", limit_amount_yuan: 5000 }
+    ]);
+  });
 });
