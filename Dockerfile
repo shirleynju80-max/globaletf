@@ -1,3 +1,4 @@
+# Option A monolith: API + static UI in one container. For option B use Dockerfile.api + fly.toml.
 FROM node:22-bookworm-slim AS build
 
 WORKDIR /app

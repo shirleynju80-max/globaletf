@@ -50,6 +50,10 @@ export function createApp(db: Database.Database, options: CreateAppOptions = {})
     res.json(TARGETS);
   });
 
+  app.get("/api/health", (_req, res) => {
+    res.json({ ok: true });
+  });
+
   app.get("/api/discovery-health/:targetCode", (req, res) => {
     res.json(queryDiscoveryHealthForTarget(db, req.params.targetCode));
   });

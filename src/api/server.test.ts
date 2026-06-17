@@ -5,6 +5,21 @@ import { runDailySync } from "../sync/syncRunner";
 import { createApp } from "./server";
 
 describe("local API", () => {
+  it("serves health check", async () => {
+    const db = createInMemoryDatabase();
+    const app = createApp(db);
+    const server = app.listen(0);
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Expected TCP server address");
+
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/health`);
+    const data = await response.json();
+    server.close();
+
+    expect(response.status).toBe(200);
+    expect(data).toEqual({ ok: true });
+  });
+
   it("serves index comparison data", async () => {
     const db = createInMemoryDatabase();
     await runDailySync(db);

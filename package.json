@@ -9,6 +9,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "api": "tsx src/api/server.ts",
+    "start:api": "tsx src/api/server.ts",
     "sync:daily": "tsx src/sync/cli.ts daily",
     "sync:quotes": "tsx src/sync/cli.ts quotes",
     "sync:limits": "tsx src/sync/cli.ts limits",
