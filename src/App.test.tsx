@@ -1,12 +1,13 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
-import { fetchDiscoveryHealth, fetchIndexComparison, fetchStockConcentration, fetchSyncStatus, fetchTargets } from "./api/client";
+import { fetchDiscoveryHealth, fetchIndexComparison, fetchLivePremium, fetchStockConcentration, fetchSyncStatus, fetchTargets } from "./api/client";
 
 vi.mock("./api/client", () => ({
   fetchTargets: vi.fn(),
   fetchIndexComparison: vi.fn(),
   fetchDiscoveryHealth: vi.fn(),
+  fetchLivePremium: vi.fn(),
   fetchStockConcentration: vi.fn(),
   fetchSyncStatus: vi.fn()
 }));
@@ -31,8 +32,17 @@ describe("App", () => {
       profileGaps: [],
       coverageGaps: []
     });
-    vi.mocked(fetchStockConcentration).mockResolvedValue([]);
+    vi.mocked(fetchStockConcentration).mockResolvedValue({
+      rows: [],
+      meta: {
+        reportPeriod: null,
+        dataSource: "fund_holdings",
+        totalBeforeDedupe: 0,
+        collapsedIndexPeers: 0
+      }
+    });
     vi.mocked(fetchSyncStatus).mockResolvedValue({});
+    vi.mocked(fetchLivePremium).mockResolvedValue({ asOf: "2026-06-16T08:00:00.000Z", rows: [] });
   });
 
   it("reloads index comparison when selecting another index target", async () => {

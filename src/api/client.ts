@@ -1,5 +1,5 @@
 import type { Target } from "../domain/types";
-import type { StockConcentrationRow, SyncStatusMap } from "../db/repositories";
+import type { StockConcentrationMeta, StockConcentrationResult, StockConcentrationRow, SyncStatusMap } from "../db/repositories";
 
 const API_BASE = import.meta.env.VITE_API_BASE ?? "http://127.0.0.1:8787";
 
@@ -15,8 +15,9 @@ export async function fetchIndexComparison(targetCode: string): Promise<{ onExch
   return response.json();
 }
 
-export async function fetchStockConcentration(stockCode: string): Promise<StockConcentrationRow[]> {
-  const response = await fetch(`${API_BASE}/api/stock-concentration/${stockCode}`);
+export async function fetchStockConcentration(stockCode: string, options: { expandPeers?: boolean } = {}): Promise<StockConcentrationResult> {
+  const query = options.expandPeers ? "?expandPeers=1" : "";
+  const response = await fetch(`${API_BASE}/api/stock-concentration/${stockCode}${query}`);
   if (!response.ok) throw new Error(`Failed to fetch stock concentration: ${response.status}`);
   return response.json();
 }
@@ -59,8 +60,21 @@ export interface LivePremiumResponse {
   rows: LivePremiumRow[];
 }
 
-export async function fetchLivePremium(targetCode: string): Promise<LivePremiumResponse> {
-  const response = await fetch(`${API_BASE}/api/live-premium/${targetCode}`);
+export async function fetchLivePremium(targetCode: string, fundCodes?: string[]): Promise<LivePremiumResponse> {
+  const query = fundCodes?.length ? `?codes=${fundCodes.join(",")}` : "";
+  const response = await fetch(`${API_BASE}/api/live-premium/${targetCode}${query}`);
   if (!response.ok) throw new Error(`Failed to fetch live premium: ${response.status}`);
+  return response.json();
+}
+
+export interface SyncLimitsResponse {
+  asOf: string;
+  offExchange: Array<Record<string, unknown>>;
+  syncStatus: SyncStatusMap;
+}
+
+export async function fetchSyncLimits(targetCode: string): Promise<SyncLimitsResponse> {
+  const response = await fetch(`${API_BASE}/api/sync-limits/${targetCode}`, { method: "POST" });
+  if (!response.ok) throw new Error(`Failed to sync off-exchange limits: ${response.status}`);
   return response.json();
 }

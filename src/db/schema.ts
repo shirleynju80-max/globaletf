@@ -136,6 +136,19 @@ export function migrate(db: Database.Database): void {
       updated_at TEXT NOT NULL,
       PRIMARY KEY (target_code, fund_code)
     );
+
+    CREATE TABLE IF NOT EXISTS stock_fund_index (
+      stock_key TEXT NOT NULL,
+      fund_code TEXT NOT NULL,
+      stock_code TEXT NOT NULL,
+      stock_name TEXT NOT NULL,
+      nav_percent REAL NOT NULL,
+      holding_market_value REAL,
+      report_period TEXT NOT NULL,
+      source TEXT NOT NULL,
+      sync_run_id TEXT NOT NULL,
+      PRIMARY KEY (stock_key, fund_code, report_period, source)
+    );
   `);
 
   relaxLegacyQuotePremiumConstraint(db);

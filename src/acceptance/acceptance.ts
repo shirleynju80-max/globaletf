@@ -3,6 +3,7 @@ import { queryIndexComparison, queryStockConcentration, querySyncStatus, queryDi
 import { CATALOG_FUNDS, CATALOG_DIRECT_SHARE_FUNDS } from "../domain/fundCatalog";
 import { INDEX_TARGETS, INDEX_TARGET_FUND_SEEDS } from "../domain/targets";
 import { STOCK_SCAN_FUNDS } from "../domain/stockScanUniverse";
+import { countStockIndexFunds } from "../sync/stockHoldingIndexSync";
 import { queryFundTrackingProfileMismatches } from "../sync/trackingProfileSync";
 
 export interface AcceptanceCheck {
@@ -25,7 +26,7 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
   }));
   const nasdaqComparison = comparisons.find((entry) => entry.target.code === "NASDAQ_100")?.comparison ?? { onExchange: [], offExchange: [] };
   const nikkeiComparison = comparisons.find((entry) => entry.target.code === "NIKKEI_225")?.comparison ?? { onExchange: [], offExchange: [] };
-  const stockConcentration = queryStockConcentration(db, "NVDA");
+  const stockConcentration = queryStockConcentration(db, "NVDA").rows;
   const nasdaqOnExchangePricedRows = nasdaqComparison.onExchange.filter((row) => row.closePrice != null);
   const nasdaqOffExchangeLimitRows = nasdaqComparison.offExchange.filter((row) => row.limitAmountYuan != null || row.status === "open" || row.status === "limited");
   const nasdaqOffExchangeFeeRows = nasdaqComparison.offExchange.filter((row) =>
@@ -108,9 +109,24 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
       message: "At least one off-exchange fund has purchase limit/status data"
     },
     {
+      key: "offExchangeKnownLimits",
+      ok: nasdaqOffExchangeLimitRows.every((row) => row.status !== "unknown"),
+      message: `NASDAQ_100 off-exchange rows with known purchase status=${nasdaqOffExchangeLimitRows.filter((row) => row.status !== "unknown").length}/${nasdaqOffExchangeLimitRows.length}`
+    },
+    {
       key: "offExchangeLimitDataDates",
-      ok: nasdaqOffExchangeLimitRows.every((row) => Boolean(row.limitDataDate)),
-      message: `NASDAQ_100 off-exchange limit rows with dates=${nasdaqOffExchangeLimitRows.filter((row) => Boolean(row.limitDataDate)).length}/${nasdaqOffExchangeLimitRows.length}`
+      ok: nasdaqOffExchangeLimitRows.every((row) => Boolean(row.limitEffectiveDate ?? row.limitDataDate)),
+      message: `NASDAQ_100 off-exchange limit rows with effective dates=${nasdaqOffExchangeLimitRows.filter((row) => Boolean(row.limitEffectiveDate ?? row.limitDataDate)).length}/${nasdaqOffExchangeLimitRows.length}`
+    },
+    {
+      key: "offExchangeLimitSyncDates",
+      ok: nasdaqOffExchangeLimitRows.every((row) => Boolean(row.limitSyncedAt)),
+      message: `NASDAQ_100 off-exchange limit rows with sync dates=${nasdaqOffExchangeLimitRows.filter((row) => Boolean(row.limitSyncedAt)).length}/${nasdaqOffExchangeLimitRows.length}`
+    },
+    {
+      key: "offExchangeLimitConflicts",
+      ok: nasdaqOffExchangeLimitRows.every((row) => !row.limitStatusConflict),
+      message: `NASDAQ_100 off-exchange limit status conflicts=${nasdaqOffExchangeLimitRows.filter((row) => row.limitStatusConflict).length}`
     },
     checkCatalogDirectShareLimits(db),
     {
@@ -128,6 +144,11 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
       ok: stockConcentration.length > 0 && stockConcentration[0].navPercent > 0,
       message: `NVDA concentration rows=${stockConcentration.length}`
     },
+    {
+      key: "stockFundIndex",
+      ok: countStockIndexFunds(db, "NVDA") > 0,
+      message: `NVDA stock_fund_index funds=${countStockIndexFunds(db, "NVDA")}`
+    },
     ...STOCK_SCAN_FUNDS.map((fund) => {
       const row = db.prepare("SELECT enabled FROM funds WHERE code = ?").get(fund.code) as { enabled: number } | undefined;
       return {
@@ -138,7 +159,9 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
     }),
     {
       key: "stockConcentrationPurchaseAvailability",
-      ok: offExchangeStockConcentration.every((row) => row.purchaseStatus != null || row.limitAmountYuan != null),
+      ok: offExchangeStockConcentration.every((row) =>
+        (row.purchaseStatus != null && row.purchaseStatus !== "unknown") || row.limitAmountYuan != null
+      ),
       message: `NVDA off-exchange purchase availability rows=${offExchangeStockConcentration.length}`
     },
     {

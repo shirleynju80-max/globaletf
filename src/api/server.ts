@@ -5,6 +5,7 @@ import { queryIndexComparison, queryDiscoveryHealthForTarget, queryOnExchangeFun
 import { TARGETS } from "../domain/targets";
 import { fetchLivePremiums } from "../providers/eastmoneyLiveQuotes";
 import { queryPriorIopvSnapshots } from "../sync/iopvQuoteEnrichment";
+import { runDailySync } from "../sync/syncRunner";
 
 function queryLatestQuoteTradeDates(db: Database.Database, fundCodes: string[]): Map<string, string> {
   if (fundCodes.length === 0) return new Map();
@@ -35,7 +36,11 @@ export function createApp(db: Database.Database, options: CreateAppOptions = {})
   app.use((_req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "Content-Type");
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+    if (_req.method === "OPTIONS") {
+      res.sendStatus(204);
+      return;
+    }
     next();
   });
 
@@ -52,7 +57,8 @@ export function createApp(db: Database.Database, options: CreateAppOptions = {})
   });
 
   app.get("/api/stock-concentration/:stockCode", (req, res) => {
-    res.json(queryStockConcentration(db, req.params.stockCode));
+    const dedupe = req.query.expandPeers !== "1";
+    res.json(queryStockConcentration(db, req.params.stockCode, { dedupe }));
   });
 
   app.get("/api/status", (_req, res) => {
@@ -63,16 +69,20 @@ export function createApp(db: Database.Database, options: CreateAppOptions = {})
   // for the target's on-exchange funds and computes the live premium/discount.
   app.get("/api/live-premium/:targetCode", async (req, res) => {
     const funds = queryOnExchangeFundCodes(db, req.params.targetCode);
-    if (funds.length === 0) {
+    const codeFilter = parseFundCodeFilter(req.query.codes);
+    const selectedFunds = codeFilter
+      ? funds.filter((fund) => codeFilter.has(fund.code))
+      : funds;
+    if (selectedFunds.length === 0) {
       res.json({ asOf: new Date().toISOString(), rows: [] });
       return;
     }
     try {
-      const codes = funds.map((fund) => fund.code);
+      const codes = selectedFunds.map((fund) => fund.code);
       const priorSnapshotsByCode = new Map(codes.map((code) => [code, queryPriorIopvSnapshots(db, code)]));
       const tradeDateByCode = queryLatestQuoteTradeDates(db, codes);
       const premiums = await fetchLivePremiums(fetchImpl, codes, { priorSnapshotsByCode, tradeDateByCode });
-      const nameByCode = new Map(funds.map((fund) => [fund.code, fund.name]));
+      const nameByCode = new Map(selectedFunds.map((fund) => [fund.code, fund.name]));
       res.json({
         asOf: new Date().toISOString(),
         rows: premiums.map((row) => ({ ...row, name: nameByCode.get(row.fundCode) ?? null }))
@@ -82,7 +92,27 @@ export function createApp(db: Database.Database, options: CreateAppOptions = {})
     }
   });
 
+  // Re-scrape off-exchange purchase limits (F10 + fund-company pages/announcements) and persist.
+  app.post("/api/sync-limits/:targetCode", async (req, res) => {
+    try {
+      await runDailySync(db, { useLiveProviders: true, areas: ["offExchange"] });
+      res.json({
+        asOf: new Date().toISOString(),
+        offExchange: queryIndexComparison(db, req.params.targetCode).offExchange,
+        syncStatus: querySyncStatus(db)
+      });
+    } catch (error) {
+      res.status(502).json({ error: error instanceof Error ? error.message : "Failed to sync off-exchange limits" });
+    }
+  });
+
   return app;
+}
+
+function parseFundCodeFilter(value: unknown): Set<string> | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const codes = value.split(",").map((code) => code.trim()).filter(Boolean);
+  return codes.length > 0 ? new Set(codes) : null;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

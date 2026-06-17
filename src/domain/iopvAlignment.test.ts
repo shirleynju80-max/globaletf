@@ -55,6 +55,22 @@ describe("iopvAlignment", () => {
     expect(iopvGztimeMatchesTradeSession("2026-06-12 04:00", "2026-06-12", priceTimeMs)).toBe(true);
   });
 
+  it("falls back to the nearest prior IOPV snapshot when the trade-date estimate is missing", () => {
+    const priceTimeMs = tradeDateCloseMs("2026-06-15")!;
+    const result = resolveIopvPremium({
+      price: 2.367,
+      priceTimeMs,
+      tradeDate: "2026-06-15",
+      current: { iopv: 2.2327, iopvTime: "2026-06-16 04:00" },
+      priorSnapshots: [
+        { iopv: 2.1702, iopvTime: "2026-06-13 04:00", iopvTimeMs: parseBeijingTimeMs("2026-06-13 04:00")! }
+      ]
+    });
+    expect(result.iopvSource).toBe("trade_date_match");
+    expect(result.iopv).toBe(2.1702);
+    expect(result.iopvTime).toBe("2026-06-13 04:00");
+  });
+
   it("derives Beijing trade date from price time when tradeDate is omitted", () => {
     const priceTimeMs = tradeDateCloseMs("2026-06-12")!;
     expect(beijingDateFromMs(priceTimeMs)).toBe("2026-06-12");

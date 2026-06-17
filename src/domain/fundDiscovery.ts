@@ -6,7 +6,9 @@ export type DiscoverySource =
   | "agency-channel"
   | "screener-name"
   | "tracking-profile"
-  | "fund-family";
+  | "fund-family"
+  | "stock-scan"
+  | "qdii-holdings-scan";
 
 /** On-exchange tradable fund codes (ETF / cross-listed LOF). */
 export function isOnExchangeTradableCode(code: string): boolean {
@@ -59,7 +61,9 @@ const DISCOVERY_SOURCE_LABELS: Record<DiscoverySource, string> = {
   "screener-name": "ETF筛选",
   "agency-channel": "代销搜索",
   "fundcode-search": "代码库",
-  "catalog-seed": "结构种子"
+  "catalog-seed": "结构种子",
+  "stock-scan": "持仓扫描",
+  "qdii-holdings-scan": "季报持仓扫描"
 };
 
 export function formatDiscoverySourceLabel(source: string | null | undefined): string {

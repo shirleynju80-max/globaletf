@@ -13,7 +13,9 @@ Local web tool for comparing mainland China funds that provide exposure to overs
 
 ## Data Freshness
 
-On-exchange ETF/LOF premium or discount is computed primarily against the real-time estimated reference NAV (IOPV / 实时估值). When the latest fundgz IOPV references a US close **newer** than the frozen A-share price (e.g. after A-shares close but before the next session), the tool **matches IOPV to the A-share trade date** (`gztime` at 04:00 Beijing on that session, reflecting the prior US close with timezone offset) instead of showing a misleading premium. The daily snapshot stores this matched IOPV; use the "实时刷新折溢价" button for on-demand live prices with the same logic.
+On-exchange ETF/LOF premium or discount is computed primarily against the real-time estimated reference NAV (IOPV / 实时估值). When the latest fundgz IOPV references a US close **newer** than the frozen A-share price (e.g. after A-shares close but before the next session), the tool **matches IOPV to the A-share trade date** (`gztime` at 04:00 Beijing on that session, reflecting the prior US close with timezone offset) instead of showing a misleading premium. The daily snapshot stores this matched IOPV for **昨日收盘折溢价** and related fields.
+
+While the on-exchange comparison view is open, the UI **automatically refreshes live premium** in the background via `GET /api/live-premium/:targetCode` (same IOPV alignment logic as the snapshot). It fetches once on load, then every 90 seconds while the tab is visible; codes that still lack a live premium are retried after 5 seconds. The table shows **折溢价（实时）** and a **折溢价更新于** timestamp—no manual refresh control is needed.
 
 Fund coverage per index is discovered automatically (East Money fund-code universe + ETF screener + F10 tracking-index verification + agency-channel search + share-class family expansion). A slim structural catalog (`src/domain/fundCatalog.ts`) only pins direct-channel I/F shares and cross-listed LOF parent links; anchor seed codes bias name search but do not guarantee breadth.
 
@@ -45,6 +47,24 @@ launchctl load ~/Library/LaunchAgents/com.etflimit.daily-sync.plist
 ```
 
 The agent runs `./scripts/daily-sync.sh` at 08:30 on weekdays. Logs land in `logs/daily-sync.log` and `logs/launchd-daily-sync.*.log`.
+
+For intraday off-exchange limit updates (QDII announcements often land around midday), schedule limits-only sync at 12:00 and 15:30 on weekdays:
+
+```sh
+chmod +x scripts/limits-sync.sh
+REPO="$(pwd)"
+sed "s|ABSOLUTE_PATH_TO_REPO|$REPO|g" scripts/com.etflimit.limits-sync.plist.example > ~/Library/LaunchAgents/com.etflimit.limits-sync.plist
+launchctl load ~/Library/LaunchAgents/com.etflimit.limits-sync.plist
+```
+
+Logs: `logs/limits-sync.log`. Cron equivalent:
+
+```cron
+0 12 * * 1-5 cd /path/to/etflimit && npm run sync:limits >> logs/limits-sync.log 2>&1
+30 15 * * 1-5 cd /path/to/etflimit && npm run sync:limits >> logs/limits-sync.log 2>&1
+```
+
+While the index comparison view is open, the UI also triggers `POST /api/sync-limits/:targetCode` about one minute after load, then every 30 minutes, to re-scrape F10 and fund-company pages (no extra API keys required).
 
 On Linux or other cron-based environments, use a cron entry with the project directory as the working directory:
 

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { createInMemoryDatabase } from "../db/database";
-import { queryIndexComparison, querySyncStatus } from "../db/repositories";
+import { queryIndexComparison, queryStockConcentration, querySyncStatus } from "../db/repositories";
 import type { DataProvider } from "../providers/types";
 import type { OffExchangeFeeLimitSnapshot } from "../providers/eastmoneyF10";
 import type { Fund, FundHolding, FundQuote } from "../domain/types";
@@ -244,6 +244,50 @@ describe("sync runner", () => {
     ]);
   });
 
+  it("merges discovered active QDII stock scan funds during live fund sync", async () => {
+    const db = createInMemoryDatabase();
+    const fundProvider: DataProvider<Fund[]> = {
+      name: "test-fund-search",
+      fetch: async () => ({
+        ok: true,
+        source: "test-fund-search",
+        dataDate: "2026-06-09",
+        confidence: 0.9,
+        data: [
+          { code: "159513", name: "纳斯达克100ETF大成", fundType: "指数型-海外股票", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true }
+        ]
+      })
+    };
+
+    await runDailySync(db, {
+      areas: ["fund"],
+      useLiveProviders: true,
+      fundProviders: [fundProvider],
+      stockScanFundDiscovery: async () => [{
+        code: "006308",
+        name: "华夏全球科技先锋混合(QDII)",
+        fundType: "QDII-混合偏股",
+        venue: "off_exchange",
+        shareClass: "A",
+        enabled: true,
+        discoverySource: "stock-scan"
+      }]
+    });
+
+    const rows = db.prepare(`
+      SELECT code, tracking_target_code AS trackingTargetCode
+      FROM funds
+      WHERE code IN ('159513', '006308', '539002')
+      ORDER BY code
+    `).all();
+
+    expect(rows).toEqual([
+      { code: "006308", trackingTargetCode: null },
+      { code: "159513", trackingTargetCode: "NASDAQ_100" },
+      { code: "539002", trackingTargetCode: null }
+    ]);
+  });
+
   it("persists stock scan universe funds without attaching them to an index target", async () => {
     const db = createInMemoryDatabase();
     const fundProvider: DataProvider<Fund[]> = {
@@ -278,6 +322,55 @@ describe("sync runner", () => {
       enabled: 1
     });
     expect([...comparison.onExchange, ...comparison.offExchange].map((row) => row.code)).not.toContain("539002");
+  });
+
+  it("builds stock_fund_index after live holdings sync", async () => {
+    const db = createInMemoryDatabase();
+    const fundProvider: DataProvider<Fund[]> = {
+      name: "test-fund-search",
+      fetch: async () => ({
+        ok: true,
+        source: "test-fund-search",
+        dataDate: "2026-06-09",
+        confidence: 0.9,
+        data: [
+          { code: "513100", name: "纳指ETF", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true }
+        ]
+      })
+    };
+    const holdingProvider: DataProvider<FundHolding[]> = {
+      name: "test-holdings",
+      fetch: async () => ({
+        ok: true,
+        source: "eastmoney-f10-jjcc",
+        dataDate: "2026Q1",
+        confidence: 0.9,
+        data: [
+          { fundCode: "539002", stockCode: "NVDA", stockName: "英伟达", navPercent: 11.5, reportPeriod: "2026Q1", source: "eastmoney-f10-jjcc", syncRunId: "run-1" },
+          { fundCode: "513100", stockCode: "NVDA", stockName: "NVIDIA Corp", navPercent: 9.2, reportPeriod: "2026Q1", source: "eastmoney-f10-jjcc", syncRunId: "run-1" }
+        ]
+      })
+    };
+
+    await runDailySync(db, {
+      areas: ["fund", "holding"],
+      useLiveProviders: true,
+      fundProviders: [fundProvider],
+      holdingProviders: [holdingProvider],
+      qdiiHoldingsCatalogLoader: async () => [{
+        code: "539002",
+        name: "建信新兴市场混合(QDII)A",
+        fundType: "QDII",
+        venue: "off_exchange",
+        shareClass: "A",
+        enabled: false,
+        discoverySource: "qdii-holdings-scan"
+      }]
+    });
+
+    expect(db.prepare("SELECT COUNT(*) AS count FROM stock_fund_index WHERE stock_key = 'NVDA'").get()).toEqual({ count: 2 });
+    expect(db.prepare("SELECT enabled FROM funds WHERE code = '539002'").get()).toEqual({ enabled: 1 });
+    expect(queryStockConcentration(db, "NVDA").rows.map((row) => row.fundCode)).toEqual(expect.arrayContaining(["539002", "513100"]));
   });
 
   it("includes stock scan universe holdings in stock concentration rankings", async () => {
@@ -322,7 +415,7 @@ describe("sync runner", () => {
     await runDailySync(db, { quoteProviders: [provider] });
     const result = queryIndexComparison(db, "NASDAQ_100");
 
-    expect(result.onExchange[0]).toMatchObject({ code: "513100", closePrice: 1.3, closingPremiumDiscountRate: 0.02, source: "test-quotes" });
+    expect(result.onExchange.find((row) => row.code === "513100")).toMatchObject({ code: "513100", closePrice: 1.3, closingPremiumDiscountRate: 0.02, source: "test-quotes" });
   });
 
   it("uses cached quotes for on-exchange funds not refreshed by the provider", async () => {
@@ -381,6 +474,76 @@ describe("sync runner", () => {
     });
   });
 
+  it("backfills stale turnover from local cache when live quote lacks kline turnover", async () => {
+    const db = createInMemoryDatabase();
+    const funds: Fund[] = [
+      { code: "513390", name: "纳指100ETF博时", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true }
+    ];
+    const fundProvider: DataProvider<Fund[]> = {
+      name: "test-funds",
+      fetch: async () => ({ ok: true, source: "test-funds", dataDate: "2026-06-10", confidence: 0.9, data: funds })
+    };
+    const seededQuoteProvider: DataProvider<FundQuote[]> = {
+      name: "seeded-quotes",
+      fetch: async () => ({
+        ok: true,
+        source: "eastmoney-on-exchange-quote",
+        dataDate: "2026-06-09",
+        confidence: 0.9,
+        data: [{
+          fundCode: "513390",
+          closePrice: 2.3,
+          closingPremiumDiscountRate: null,
+          turnover: 88_000_000,
+          tradeDate: "2026-06-09",
+          source: "eastmoney-on-exchange-quote",
+          syncRunId: "run-1"
+        }]
+      })
+    };
+    await runDailySync(db, { fundProviders: [fundProvider], quoteProviders: [seededQuoteProvider] });
+
+    const spotQuoteProvider: DataProvider<FundQuote[]> = {
+      name: "spot-quotes",
+      fetch: async () => ({
+        ok: true,
+        source: "eastmoney-on-exchange-spot",
+        dataDate: "2026-06-10",
+        confidence: 0.8,
+        data: [{
+          fundCode: "513390",
+          closePrice: 2.42,
+          closingPremiumDiscountRate: null,
+          turnover: undefined,
+          tradeDate: "2026-06-10",
+          source: "eastmoney-on-exchange-spot",
+          syncRunId: "run-2"
+        }]
+      })
+    };
+    const fetchImpl = vi.fn(async () => new Response("{}", { status: 404 })) as unknown as typeof fetch;
+    vi.stubGlobal("fetch", fetchImpl);
+    try {
+      await runDailySync(db, { fundProviders: [fundProvider], quoteProviders: [spotQuoteProvider] });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+
+    const result = queryIndexComparison(db, "NASDAQ_100").onExchange.find((row) => row.code === "513390");
+    const status = querySyncStatus(db).quote;
+
+    expect(result).toMatchObject({
+      code: "513390",
+      closePrice: 2.42,
+      turnover: 88_000_000,
+      source: "eastmoney-on-exchange-quote+stale-turnover"
+    });
+    expect(status).toMatchObject({
+      status: "ok",
+      source: "eastmoney-on-exchange-quote+stale-turnover"
+    });
+  });
+
   it("falls back to cached fund universe when fund discovery fails", async () => {
     const db = createInMemoryDatabase();
     const cachedFunds: Fund[] = [
@@ -423,7 +586,7 @@ describe("sync runner", () => {
     const result = queryIndexComparison(db, "NASDAQ_100");
     const status = querySyncStatus(db).quote;
 
-    expect(result.onExchange[0]).toMatchObject({ code: "513100", closePrice: 1.23, source: "eastmoney" });
+    expect(result.onExchange.find((row) => row.code === "513100")).toMatchObject({ code: "513100", closePrice: 1.23, source: "eastmoney" });
     expect(status).toMatchObject({
       status: "fallback",
       source: "local-cache",
@@ -598,12 +761,12 @@ describe("sync runner", () => {
     const result = queryIndexComparison(db, "NASDAQ_100");
 
     expect(result.offExchange).toEqual(expect.arrayContaining([
-      expect.objectContaining({ code: "000834", source: null, limitAmountYuan: null })
+      expect.objectContaining({ code: "000834", source: undefined, limitAmountYuan: undefined })
     ]));
     // No stale mock limits should leak onto the discovered universe.
     for (const row of result.offExchange) {
-      expect(row.source).toBeNull();
-      expect(row.limitAmountYuan).toBeNull();
+      expect(row.source).toBeUndefined();
+      expect(row.limitAmountYuan).toBeUndefined();
     }
   });
 

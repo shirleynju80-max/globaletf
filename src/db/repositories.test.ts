@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryDatabase } from "./database";
-import { insertSnapshotBundle, queryIndexComparison, queryStockConcentration, querySyncStatus, recordSyncStatus } from "./repositories";
+import { insertSnapshotBundle, queryIndexComparison, queryStockConcentration, querySyncStatus, recordSyncStatus, rebuildStockFundIndex } from "./repositories";
 
 describe("repositories", () => {
   it("returns grouped index comparison rows from latest snapshots", () => {
@@ -55,8 +55,8 @@ describe("repositories", () => {
         { code: "016532", name: "未知C", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "C", enabled: true }
       ],
       quotes: [
-        { fundCode: "513100", closePrice: 1, closingPremiumDiscountRate: 0, turnover: 100, tradeDate: "2026-06-10", source: "eastmoney", syncRunId: "run-1" },
-        { fundCode: "159513", closePrice: 1, closingPremiumDiscountRate: 0, turnover: 1000, tradeDate: "2026-06-10", source: "eastmoney", syncRunId: "run-1" }
+        { fundCode: "513100", closePrice: 1, closingPremiumDiscountRate: 0, iopvPremiumDiscountRate: 0.03, turnover: 100, tradeDate: "2026-06-10", source: "eastmoney", syncRunId: "run-1" },
+        { fundCode: "159513", closePrice: 1, closingPremiumDiscountRate: 0, iopvPremiumDiscountRate: 0.08, turnover: 1000, tradeDate: "2026-06-10", source: "eastmoney", syncRunId: "run-1" }
       ],
       limits: [
         { fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "tiantian", dataDate: "2026-06-10", confidence: 0.9, syncRunId: "run-1" },
@@ -172,6 +172,54 @@ describe("repositories", () => {
     expect(result.onExchange[0]).toMatchObject({ closePrice: 1.3, source: "eastmoney-on-exchange-quote" });
   });
 
+  it("fills missing IOPV from a same-day spot snapshot while keeping kline turnover", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "159632", name: "纳斯达克ETF华安", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true }
+      ],
+      quotes: [
+        {
+          fundCode: "159632",
+          closePrice: 2.478,
+          closingPremiumDiscountRate: 0.0837,
+          turnover: 645942036.486,
+          tradeDate: "2026-06-15",
+          source: "eastmoney-on-exchange-quote",
+          syncRunId: "run-1"
+        },
+        {
+          fundCode: "159632",
+          closePrice: 2.478,
+          closingPremiumDiscountRate: 0.0837,
+          iopv: 2.3532,
+          iopvTime: "2026-06-16 04:00",
+          iopvPremiumDiscountRate: 0.053,
+          turnover: 502000944.189,
+          tradeDate: "2026-06-15",
+          source: "eastmoney-on-exchange-spot",
+          syncRunId: "run-1"
+        }
+      ],
+      limits: [],
+      fees: [],
+      holdings: []
+    });
+
+    const result = queryIndexComparison(db, "NASDAQ_100");
+
+    expect(result.onExchange[0]).toMatchObject({
+      code: "159632",
+      closePrice: 2.478,
+      turnover: 645942036.486,
+      source: "eastmoney-on-exchange-quote",
+      iopvPremiumDiscountRate: 0.053,
+      iopv: 2.3532,
+      iopvTime: "2026-06-16 04:00"
+    });
+  });
+
   it("prefers the latest F10 purchase limit snapshot over older fallback data", () => {
     const db = createInMemoryDatabase();
     insertSnapshotBundle(db, {
@@ -245,6 +293,114 @@ describe("repositories", () => {
     expect(result.offExchange.map((row) => row.code)).toEqual(["021778"]);
   });
 
+  it("excludes delisted on-exchange funds from index comparison", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "160213", name: "国泰纳斯达克100指数", fundType: "QDII", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "LOF", enabled: true },
+        { code: "513100", name: "纳指ETF", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true }
+      ],
+      quotes: [
+        { fundCode: "513100", closePrice: 2.2, closingPremiumDiscountRate: 0.01, turnover: 100000, tradeDate: "2026-06-15", source: "eastmoney", syncRunId: "run-1" }
+      ],
+      limits: [],
+      fees: [],
+      holdings: []
+    });
+
+    const result = queryIndexComparison(db, "NASDAQ_100");
+
+    expect(result.onExchange.map((row) => row.code)).toEqual(["513100"]);
+  });
+
+  it("prefers direct-channel limits for I shares over newer agency rows without amounts", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "021000", name: "南方纳斯达克100指数发起(QDII)I", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "I", enabled: true }
+      ],
+      quotes: [],
+      limits: [
+        { fundCode: "021000", shareClass: "I", status: "limited", limitAmountYuan: 5000, limitUnit: "per_day", channelScope: "direct", channelId: "nfjj", source: "fundco-announcement-nfjj", dataDate: "2026-04-08", confidence: 0.95, syncRunId: "run-1" },
+        { fundCode: "021000", shareClass: "I", status: "limited", limitUnit: "per_day", channelScope: "agency", channelId: "eastmoney_aggregate", source: "tiantian-f10-jjfl", dataDate: "2026-06-16", confidence: 0.9, syncRunId: "run-1" }
+      ],
+      fees: [],
+      holdings: []
+    });
+
+    const result = queryIndexComparison(db, "NASDAQ_100");
+
+    expect(result.offExchange).toHaveLength(1);
+    expect(result.offExchange[0]).toMatchObject({
+      code: "021000",
+      limitAmountYuan: 5000,
+      channelScope: "direct",
+      channelId: "nfjj",
+      limitEffectiveDate: "2026-04-08",
+      limitSyncedAt: "2026-06-16",
+      limitStale: false
+    });
+  });
+
+  it("reconciles suspended agency status over direct limit amount for I shares", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "021000", name: "南方纳斯达克100指数发起(QDII)I", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "I", enabled: true }
+      ],
+      quotes: [],
+      limits: [
+        { fundCode: "021000", shareClass: "I", status: "limited", limitAmountYuan: 5000, limitUnit: "per_day", channelScope: "direct", channelId: "nfjj", source: "fundco-announcement-nfjj", dataDate: "2026-04-08", confidence: 0.95, syncRunId: "daily-20260616T043844Z" },
+        { fundCode: "021000", shareClass: "I", status: "suspended", limitUnit: "per_day", channelScope: "agency", channelId: "eastmoney_aggregate", source: "tiantian-f10-jjfl", dataDate: "2026-06-16", confidence: 0.9, syncRunId: "daily-20260616T043844Z" }
+      ],
+      fees: [],
+      holdings: []
+    });
+
+    const result = queryIndexComparison(db, "NASDAQ_100");
+
+    expect(result.offExchange[0]).toMatchObject({
+      code: "021000",
+      status: "suspended",
+      limitAmountYuan: undefined,
+      limitEffectiveDate: "2026-06-16",
+      limitSyncedAt: "2026-06-16",
+      limitStatusConflict: true
+    });
+  });
+
+  it("falls back from useless direct unknown rows to known direct or agency limits for I shares", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "024237", name: "博时纳斯达克100ETF发起式联接(QDII)I人民币", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "I", fundCompany: "博时基金", enabled: true }
+      ],
+      quotes: [],
+      limits: [
+        { fundCode: "024237", shareClass: "I", status: "unknown", limitUnit: "unknown", channelScope: "direct", channelId: "bosera", source: "fundco-direct-bosera", dataDate: "2026-06-16", confidence: 0.92, syncRunId: "run-1" },
+        { fundCode: "024237", shareClass: "I", status: "suspended", limitUnit: "unknown", channelScope: "direct", channelId: "bosera", source: "fundco-announcement-bosera", dataDate: "2026-04-24", confidence: 0.85, syncRunId: "run-1" },
+        { fundCode: "024237", shareClass: "I", status: "suspended", limitUnit: "unknown", channelScope: "agency", channelId: "eastmoney_aggregate", source: "tiantian-f10-jjfl", dataDate: "2026-06-16", confidence: 0.9, syncRunId: "run-1" }
+      ],
+      fees: [],
+      holdings: []
+    });
+
+    const result = queryIndexComparison(db, "NASDAQ_100");
+
+    expect(result.offExchange).toHaveLength(1);
+    expect(result.offExchange[0]).toMatchObject({
+      code: "024237",
+      status: "suspended",
+      channelScope: "agency",
+      channelId: "eastmoney_aggregate",
+      limitEffectiveDate: "2026-06-16"
+    });
+  });
+
   it("returns latest stock concentration rows ranked by holding weight", () => {
     const db = createInMemoryDatabase();
     insertSnapshotBundle(db, {
@@ -270,10 +426,59 @@ describe("repositories", () => {
 
     const result = queryStockConcentration(db, "NVDA");
 
-    expect(result).toEqual([
+    expect(result.rows).toEqual([
       expect.objectContaining({ fundCode: "000834", fundName: "纳指100联接A", shareClass: "A", navPercent: 10.1, reportPeriod: "2026Q1", purchaseStatus: "limited", limitAmountYuan: 5000, limitUnit: "per_day", limitDataDate: "2026-06-10" }),
       expect.objectContaining({ fundCode: "513100", fundName: "纳指ETF", shareClass: "ETF", navPercent: 9.2, reportPeriod: "2026Q1" })
     ]);
+  });
+
+  it("dedupes homogeneous index trackers while keeping non-index funds", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "539002", name: "建信新兴市场混合(QDII)A", fundType: "QDII", venue: "off_exchange", shareClass: "A", enabled: true },
+        { code: "513100", name: "纳指ETF", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true },
+        { code: "159513", name: "纳斯达克100ETF大成", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true },
+        { code: "159632", name: "纳斯达克ETF华安", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true }
+      ],
+      quotes: [],
+      limits: [],
+      fees: [],
+      holdings: [
+        { fundCode: "539002", stockCode: "NVDA", stockName: "英伟达", navPercent: 11.5, reportPeriod: "2026Q1", source: "eastmoney", syncRunId: "run-1" },
+        { fundCode: "513100", stockCode: "NVDA", stockName: "NVIDIA Corp", navPercent: 9.2, reportPeriod: "2026Q1", source: "eastmoney", syncRunId: "run-1" },
+        { fundCode: "159513", stockCode: "NVDA", stockName: "NVIDIA Corp", navPercent: 9.0, reportPeriod: "2026Q1", source: "eastmoney", syncRunId: "run-1" },
+        { fundCode: "159632", stockCode: "NVDA", stockName: "NVIDIA Corp", navPercent: 8.8, reportPeriod: "2026Q1", source: "eastmoney", syncRunId: "run-1" }
+      ]
+    });
+
+    expect(queryStockConcentration(db, "NVDA").rows.map((row) => row.fundCode)).toEqual(["539002", "513100", "159513"]);
+    expect(queryStockConcentration(db, "NVDA", { dedupe: false }).rows.map((row) => row.fundCode)).toEqual([
+      "539002", "513100", "159513", "159632"
+    ]);
+  });
+
+  it("queries stock concentration from stock_fund_index when present", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "539002", name: "建信新兴市场混合(QDII)A", fundType: "QDII", venue: "off_exchange", shareClass: "A", enabled: true },
+        { code: "513100", name: "纳指ETF", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true }
+      ],
+      quotes: [],
+      limits: [],
+      fees: [],
+      holdings: [
+        { fundCode: "539002", stockCode: "NVDA", stockName: "英伟达", navPercent: 11.5, reportPeriod: "2026Q1", source: "eastmoney-f10-jjcc", syncRunId: "run-1" },
+        { fundCode: "513100", stockCode: "NVDA", stockName: "NVIDIA Corp", navPercent: 9.2, reportPeriod: "2026Q1", source: "eastmoney-f10-jjcc", syncRunId: "run-1" }
+      ]
+    });
+    rebuildStockFundIndex(db, "run-1");
+
+    expect(queryStockConcentration(db, "NVDA").rows.map((row) => row.fundCode)).toEqual(["539002", "513100"]);
+    expect(queryStockConcentration(db, "英伟达").rows.map((row) => row.fundCode)).toEqual(["539002", "513100"]);
   });
 
   it("records sync status by data area", () => {

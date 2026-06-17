@@ -26,4 +26,13 @@ describe("mergeDirectLimits", () => {
     expect(merged[0]?.limitAmountYuan).toBe(20000);
     expect(merged[0]?.source).toBe("fundco-direct-nfjj");
   });
+
+  it("prefers a known-status announcement over a higher-confidence unknown company page row", () => {
+    const merged = mergeDirectLimits([
+      baseLimit({ status: "suspended", confidence: 0.85, source: "fundco-announcement-bosera", channelId: "bosera" }),
+      baseLimit({ status: "unknown", confidence: 0.92, source: "fundco-direct-bosera", channelId: "bosera" })
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0]).toMatchObject({ status: "suspended", source: "fundco-announcement-bosera" });
+  });
 });

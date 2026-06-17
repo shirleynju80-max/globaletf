@@ -1,12 +1,39 @@
 import { calculateClosingPremiumDiscount, calculateIopvPremiumDiscount } from "../domain/quotes";
 import type { Fund, FundQuote } from "../domain/types";
-import { fetchFundEstimate, type FundEstimate } from "./eastmoneyIopv";
+import type { FundEstimate } from "./eastmoneyIopv";
+import {
+  fetchEastMoneyQuoteListMap,
+  mergeQuoteListIopv,
+  parseEastMoneyQuoteListRows,
+  spotCloseFromQuoteRow,
+  type EastMoneyQuoteListRow
+} from "./eastmoneyQuoteList";
+import { fetchFundReferenceEstimate } from "./fundReferenceEstimate";
 import { fetchWithTimeout, mapConcurrent } from "./requestUtils";
 import type { DataProvider } from "./types";
 
 const SOURCE = "eastmoney-on-exchange-quote";
 const SPOT_SOURCE = "eastmoney-on-exchange-spot";
 const LIVE_PRICE_HOSTS = ["https://push2.eastmoney.com", "https://push2delay.eastmoney.com"];
+const KLINE_PATH = "/api/qt/stock/kline/get";
+const KLINE_PRIMARY_UT = "fa5fd1943c7b386f172d6893dbfba10b";
+const KLINE_ALTERNATE_UT = "7eea3edcaed734bea9cbfc24409ed989";
+
+interface KlineFetchTarget {
+  host: string;
+  referer: string;
+  ut: string;
+}
+
+/** Primary host with retry, then alternate referer/host/token combinations. */
+const KLINE_FETCH_TARGETS: KlineFetchTarget[] = [
+  { host: "https://push2his.eastmoney.com", referer: "https://quote.eastmoney.com/", ut: KLINE_PRIMARY_UT },
+  { host: "https://push2his.eastmoney.com", referer: "https://quote.eastmoney.com/", ut: KLINE_PRIMARY_UT },
+  { host: "https://push2his.eastmoney.com", referer: "https://fund.eastmoney.com/", ut: KLINE_PRIMARY_UT },
+  { host: "http://push2his.eastmoney.com", referer: "https://quote.eastmoney.com/", ut: KLINE_PRIMARY_UT },
+  { host: "https://push2his.eastmoney.com", referer: "https://quote.eastmoney.com/", ut: KLINE_ALTERNATE_UT }
+];
+const KLINE_RETRY_DELAY_MS = 400;
 
 interface ProviderOptions {
   fetchImpl?: typeof fetch;
@@ -32,6 +59,7 @@ interface SpotQuote {
   closePrice: number;
   turnover?: number;
   tradeDate: string;
+  quoteRow?: EastMoneyQuoteListRow;
 }
 
 export function eastMoneySecid(code: string): string {
@@ -63,19 +91,15 @@ export function parseEastMoneyNavLatest(payload: string): NavLatest {
 }
 
 export function parseEastMoneySpotQuotes(payload: unknown, dataDate: string): SpotQuote[] {
-  const rows = (payload as { data?: { diff?: Array<Record<string, unknown>> } }).data?.diff ?? [];
-  const tradeDate = previousCalendarDate(dataDate);
-
-  return rows.flatMap((row) => {
-    const fundCode = String(row.f12 ?? "");
-    const closePrice = Number(row.f18);
-    const turnover = Number(row.f6);
-    if (!fundCode || !Number.isFinite(closePrice)) return [];
+  return parseEastMoneyQuoteListRows(payload).flatMap((row) => {
+    const spot = spotCloseFromQuoteRow(row, dataDate);
+    if (!spot) return [];
     return [{
-      fundCode,
-      closePrice,
-      turnover: Number.isFinite(turnover) ? turnover : undefined,
-      tradeDate
+      fundCode: row.fundCode,
+      closePrice: spot.closePrice,
+      turnover: spot.turnover,
+      tradeDate: spot.tradeDate,
+      quoteRow: row
     }];
   });
 }
@@ -90,29 +114,33 @@ export function createEastMoneyOnExchangeQuoteProvider(funds: Fund[], options: P
       const concurrency = options.concurrency ?? 4;
       const timeoutMs = options.requestTimeoutMs ?? 12_000;
       const onExchangeFunds = funds.filter((item) => item.enabled && item.venue === "on_exchange");
-      const spotByCode = await fetchSpotQuoteMap(fetchImpl, onExchangeFunds, dataDate, timeoutMs);
+      const fundCodes = onExchangeFunds.map((fund) => fund.code);
+      const [spotByCode, quoteListByCode] = await Promise.all([
+        fetchSpotQuoteMap(fetchImpl, onExchangeFunds, dataDate, timeoutMs),
+        fetchEastMoneyQuoteListMap(fetchImpl, fundCodes, timeoutMs)
+      ]);
 
       const quoteResults = await mapConcurrent(onExchangeFunds, concurrency, async (fund) => {
-        try {
-          const kline = await fetchKline(fetchImpl, fund.code, dataDate, timeoutMs);
+        const quoteRow = quoteListByCode.get(fund.code) ?? spotByCode.get(fund.code)?.quoteRow ?? null;
+        const kline = await safeFetchPreviousDayKline(fetchImpl, fund.code, dataDate, timeoutMs);
+        if (kline) {
           return buildQuote(fetchImpl, fund.code, {
             closePrice: kline.closePrice,
             turnover: kline.turnover,
             tradeDate: kline.tradeDate,
             source: SOURCE,
             syncRunId
-          }, timeoutMs);
-        } catch {
-          const spot = spotByCode.get(fund.code);
-          if (!spot) return null;
-          return buildQuote(fetchImpl, fund.code, {
-            closePrice: spot.closePrice,
-            turnover: spot.turnover,
-            tradeDate: spot.tradeDate,
-            source: SPOT_SOURCE,
-            syncRunId
-          }, timeoutMs);
+          }, timeoutMs, quoteRow);
         }
+        const spot = spotByCode.get(fund.code);
+        if (!spot) return null;
+        return buildQuote(fetchImpl, fund.code, {
+          closePrice: spot.closePrice,
+          turnover: undefined,
+          tradeDate: spot.tradeDate,
+          source: SPOT_SOURCE,
+          syncRunId
+        }, timeoutMs, quoteRow ?? spot.quoteRow ?? null);
       });
 
       const quotes = quoteResults.filter((quote): quote is FundQuote => quote != null);
@@ -132,10 +160,13 @@ async function buildQuote(
   fetchImpl: typeof fetch,
   fundCode: string,
   price: { closePrice: number; turnover?: number; tradeDate: string; source: string; syncRunId: string },
-  timeoutMs: number
+  timeoutMs: number,
+  quoteRow: EastMoneyQuoteListRow | null = null
 ): Promise<FundQuote> {
-  const estimate = await fetchFundEstimate(fetchImpl, fundCode, timeoutMs);
-  const nav = await resolveNav(fetchImpl, fundCode, estimate, timeoutMs);
+  const fallback = await fetchFundReferenceEstimate(fetchImpl, fundCode, timeoutMs);
+  const reference = mergeQuoteListIopv(quoteRow, fallback, price.tradeDate);
+  const nav = await resolveNav(fetchImpl, fundCode, reference, timeoutMs);
+  const iopv = reference?.iopv ?? null;
   return {
     fundCode,
     closePrice: price.closePrice,
@@ -143,9 +174,9 @@ async function buildQuote(
     tradeDate: price.tradeDate,
     unitNav: nav?.unitNav ?? null,
     navDate: nav?.navDate ?? null,
-    iopv: estimate?.iopv ?? null,
-    iopvTime: estimate?.iopvTime ?? null,
-    iopvPremiumDiscountRate: calculateIopvPremiumDiscount(price.closePrice, estimate?.iopv),
+    iopv,
+    iopvTime: reference?.iopvTime ?? null,
+    iopvPremiumDiscountRate: calculateIopvPremiumDiscount(price.closePrice, iopv),
     closingPremiumDiscountRate: calculateClosingPremiumDiscount({
       closePrice: price.closePrice,
       unitNav: nav?.unitNav ?? 0,
@@ -167,7 +198,7 @@ async function fetchSpotQuoteMap(
   const params = new URLSearchParams({
     fltt: "2",
     secids: funds.map((fund) => eastMoneySecid(fund.code)).join(","),
-    fields: "f12,f14,f6,f18"
+    fields: "f12,f14,f6,f18,f124,f441"
   });
   for (const host of LIVE_PRICE_HOSTS) {
     try {
@@ -190,10 +221,34 @@ async function fetchSpotQuoteMap(
   return new Map();
 }
 
-async function fetchKline(fetchImpl: typeof fetch, code: string, beforeDate: string, timeoutMs?: number): Promise<KlineLatest> {
+/** Previous completed trading day close and full-day turnover from daily kline. */
+export async function safeFetchPreviousDayKline(
+  fetchImpl: typeof fetch,
+  code: string,
+  beforeDate: string,
+  timeoutMs?: number
+): Promise<KlineLatest | null> {
+  for (let index = 0; index < KLINE_FETCH_TARGETS.length; index += 1) {
+    if (index === 1) await sleep(KLINE_RETRY_DELAY_MS);
+    try {
+      return await fetchKline(fetchImpl, code, beforeDate, timeoutMs, KLINE_FETCH_TARGETS[index]);
+    } catch {
+      continue;
+    }
+  }
+  return null;
+}
+
+async function fetchKline(
+  fetchImpl: typeof fetch,
+  code: string,
+  beforeDate: string,
+  timeoutMs: number | undefined,
+  target: KlineFetchTarget
+): Promise<KlineLatest> {
   const params = new URLSearchParams({
     secid: eastMoneySecid(code),
-    ut: "fa5fd1943c7b386f172d6893dbfba10b",
+    ut: target.ut,
     fields1: "f1,f2,f3,f4,f5,f6",
     fields2: "f51,f52,f53,f54,f55,f56,f57,f58,f59,f60,f61",
     klt: "101",
@@ -203,12 +258,16 @@ async function fetchKline(fetchImpl: typeof fetch, code: string, beforeDate: str
   });
   const response = await fetchWithTimeout(
     fetchImpl,
-    `https://push2his.eastmoney.com/api/qt/stock/kline/get?${params.toString()}`,
-    { headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://fund.eastmoney.com/" } },
+    `${target.host}${KLINE_PATH}?${params.toString()}`,
+    { headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: target.referer } },
     timeoutMs
   );
   if (!response.ok) throw new Error(`kline returned ${response.status}`);
   return parseEastMoneyKlineLatest(await response.json(), beforeDate);
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function fetchNav(fetchImpl: typeof fetch, code: string, timeoutMs?: number): Promise<NavLatest> {
@@ -246,10 +305,4 @@ function decodeEscapedHtml(value: string): string {
 
 function normalizeText(html: string): string {
   return html.replace(/<[^>]+>/g, "").replace(/&nbsp;/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function previousCalendarDate(date: string): string {
-  const parsed = new Date(`${date}T00:00:00.000Z`);
-  parsed.setUTCDate(parsed.getUTCDate() - 1);
-  return parsed.toISOString().slice(0, 10);
 }

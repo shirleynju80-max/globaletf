@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Fund } from "../domain/types";
-import { createEastMoneyHoldingsProvider, parseEastMoneyHoldingsPage } from "./eastmoneyHoldings";
+import { createEastMoneyHoldingsProvider, parseEastMoneyHoldingsPage, parseLatestReportPeriodFromHoldingsPage } from "./eastmoneyHoldings";
 
 const samplePage = `var apidata={ content:"<div class='box'><div class='boxitem w790'><h4 class='t'><label class='left'>2023年3季度股票投资明细</label><label class='right'>截止至：<font class='px12'>2023-08-31</font></label></h4><table><tbody><tr><td>1</td><td><a>AAPL</a></td><td><a>苹果</a></td><td>--</td><td>--</td><td>资讯</td><td>5.09%</td><td>10.45</td><td>12,847.91</td></tr><tr><td>2</td><td><a>NVDA</a></td><td><a>英伟达</a></td><td>--</td><td>--</td><td>资讯</td><td>2.04%</td><td>1.65</td><td>5,156.93</td></tr></tbody></table></div></div>",arryear:[2023,2022],curyear:2025};`;
 
 describe("eastmoney holdings provider", () => {
+  it("parses latest report period from holdings page", () => {
+    expect(parseLatestReportPeriodFromHoldingsPage(samplePage)).toBe("2023Q3");
+  });
+
   it("parses F10 holding rows", () => {
     const rows = parseEastMoneyHoldingsPage({
       fundCode: "000834",
@@ -82,5 +86,33 @@ describe("eastmoney holdings provider", () => {
     if (!result.ok) return;
     expect(maxActiveRequests).toBeLessThanOrEqual(2);
     expect([...new Set(result.data.map((row) => row.fundCode))]).toEqual(["000834", "513390"]);
+  });
+
+  it("reuses cached holdings when the latest report period is unchanged", async () => {
+    const fund: Fund = { code: "000834", name: "纳指100联接A", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "A", enabled: true };
+    const cachedHoldings = [{
+      fundCode: "000834",
+      stockCode: "NVDA",
+      stockName: "英伟达",
+      navPercent: 2.04,
+      reportPeriod: "2023Q3",
+      source: "eastmoney-f10-jjcc",
+      syncRunId: "run-1"
+    }];
+    const fetchImpl = vi.fn(async () => new Response(samplePage, { status: 200 })) as typeof fetch;
+
+    const result = await createEastMoneyHoldingsProvider([fund], {
+      fetchImpl,
+      years: [2023],
+      syncRunId: "run-2",
+      cachedHoldingsByFundCode: new Map([["000834", cachedHoldings]])
+    }).fetch();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(result.data).toEqual([
+      expect.objectContaining({ fundCode: "000834", stockCode: "NVDA", navPercent: 2.04, syncRunId: "run-2" })
+    ]);
   });
 });

@@ -7,6 +7,13 @@ export function parsePurchaseStatus(text: string): PurchaseStatus {
   return "unknown";
 }
 
+/** Skip company-page rows that only carry an unparseable status with no limit amount. */
+export function shouldPersistCompanyPageLimit(statusText: string, limitText: string): boolean {
+  if (!statusText && !limitText) return false;
+  if (parsePurchaseStatus(statusText) !== "unknown") return true;
+  return parseMoneyYuan(limitText) != null;
+}
+
 export function parseMoneyYuan(text: string): number | undefined {
   if (!text || text.includes("无限")) return undefined;
   const match = text.match(/([\d.]+)\s*(亿|万)?元/);

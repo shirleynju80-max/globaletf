@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryDatabase } from "../db/database";
-import { insertSnapshotBundle, recordFundDiscoveryManifest, recordProviderResults, recordSyncRun, recordSyncStatus, replaceDiscoveryProfileGaps } from "../db/repositories";
+import { insertSnapshotBundle, rebuildStockFundIndex, recordFundDiscoveryManifest, recordProviderResults, recordSyncRun, recordSyncStatus, replaceDiscoveryProfileGaps } from "../db/repositories";
 import { CATALOG_DIRECT_SHARE_FUNDS, CATALOG_FUNDS } from "../domain/fundCatalog";
 import { NASDAQ_ACCEPTANCE_FUNDS } from "./nasdaqAcceptanceFixtures";
 import { directChannelForCompany } from "../domain/channels";
@@ -294,6 +294,7 @@ function createAcceptanceDatabase(overrides: {
       ])
     ]
   });
+  rebuildStockFundIndex(db, "acceptance-run");
   recordFundDiscoveryManifest(
     db,
     "acceptance-run",

@@ -1,4 +1,4 @@
-import { parseMoneyYuan, parsePurchaseStatus } from "../../domain/limitText";
+import { parseMoneyYuan, parsePurchaseStatus, shouldPersistCompanyPageLimit } from "../../domain/limitText";
 import type { DirectChannelId } from "../../domain/channels";
 import type { Fund, PurchaseLimit } from "../../domain/types";
 import { fetchWithTimeout } from "../requestUtils";
@@ -115,9 +115,9 @@ export async function fetchBoseraDirectLimits(
       );
       if (!response.ok) continue;
       const html = await response.text();
-      const statusText = extractLabeledValue(html, "申购状态") ?? extractLabeledValue(html, "申购");
+      const statusText = extractLabeledValue(html, "申购状态") ?? "";
       const limitText = extractLabeledValue(html, "日累计申购限额") ?? extractLabeledValue(html, "申购限额") ?? "";
-      if (!statusText && !limitText) continue;
+      if (!shouldPersistCompanyPageLimit(statusText, limitText)) continue;
       limits.push(companyPageRowToLimit({ fundCode: fund.code, statusText, limitText }, fund, "bosera", dataDate, syncRunId));
     } catch {
       continue;
@@ -147,7 +147,7 @@ export async function fetchHarvestDirectLimits(
         const html = await response.text();
         const statusText = extractLabeledValue(html, "申购状态") ?? "";
         const limitText = extractLabeledValue(html, "日累计申购限额") ?? extractLabeledValue(html, "申购限额") ?? "";
-        if (!statusText && !limitText) continue;
+        if (!shouldPersistCompanyPageLimit(statusText, limitText)) continue;
         limits.push(companyPageRowToLimit({ fundCode: fund.code, statusText, limitText }, fund, "js", dataDate, syncRunId));
         break;
       } catch {
@@ -179,7 +179,7 @@ export async function fetchHuataiPbDirectLimits(
         const html = await response.text();
         const statusText = extractLabeledValue(html, "申购状态") ?? "";
         const limitText = extractLabeledValue(html, "日累计申购限额") ?? "";
-        if (!statusText && !limitText) continue;
+        if (!shouldPersistCompanyPageLimit(statusText, limitText)) continue;
         limits.push(companyPageRowToLimit({ fundCode: fund.code, statusText, limitText }, fund, "htbr", dataDate, syncRunId));
         break;
       } catch {
@@ -262,7 +262,7 @@ async function fetchSimpleTradeLimitPages(
         const html = await response.text();
         const statusText = extractLabeledValue(html, "申购状态") ?? "";
         const limitText = extractLabeledValue(html, "日累计申购限额") ?? extractLabeledValue(html, "申购限额") ?? "";
-        if (!statusText && !limitText) continue;
+        if (!shouldPersistCompanyPageLimit(statusText, limitText)) continue;
         limits.push(companyPageRowToLimit({ fundCode: fund.code, statusText, limitText }, fund, channelId, dataDate, syncRunId));
         break;
       } catch {

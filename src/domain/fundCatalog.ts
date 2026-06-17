@@ -10,7 +10,6 @@ const QDII_INDEX = "指数型-海外股票";
 export const INDEX_FUND_CATALOG: Record<string, Fund[]> = {
   NASDAQ_100: [
     onExchangeLof("161130", "易方达纳斯达克100ETF联接(QDII-LOF)A", "易方达基金", "NASDAQ_100", "159696"),
-    onExchangeLof("160213", "国泰纳斯达克100指数(QDII-LOF)", "国泰基金", "NASDAQ_100", "513100"),
     offExchangeShare("021000", "南方纳斯达克100指数发起(QDII)I", "I", "南方基金", "NASDAQ_100", "016452"),
     offExchangeShare("021778", "广发纳斯达克100ETF联接(QDII)人民币F", "F", "广发基金", "NASDAQ_100", "159941"),
     offExchangeShare("021838", "嘉实纳斯达克100ETF发起联接(QDII)I人民币", "I", "嘉实基金", "NASDAQ_100", "159501"),

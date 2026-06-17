@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import type { StockConcentrationRow } from "../db/repositories";
+import type { StockConcentrationMeta, StockConcentrationRow } from "../db/repositories";
 
 const STOCK_OPTIONS = ["NVDA", "AAPL", "MSFT", "TSLA", "META"];
 const FILTER_OPTIONS = [
@@ -14,10 +14,13 @@ type StockFilter = (typeof FILTER_OPTIONS)[number]["key"];
 interface Props {
   selectedStock: string;
   rows: StockConcentrationRow[];
+  meta: StockConcentrationMeta | null;
+  expandPeers: boolean;
   onSelectStock: (stockCode: string) => void;
+  onExpandPeersChange: (expandPeers: boolean) => void;
 }
 
-export function StockConcentration({ selectedStock, rows, onSelectStock }: Props) {
+export function StockConcentration({ selectedStock, rows, meta, expandPeers, onSelectStock, onExpandPeersChange }: Props) {
   const [customStock, setCustomStock] = useState("");
   const [filter, setFilter] = useState<StockFilter>("all");
   const filteredRows = rows.filter((row) => matchesFilter(row, filter));
@@ -38,7 +41,9 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
         </div>
         <span className="source-pill">定期报告</span>
       </div>
-      <p className="note">持仓来自基金定期报告，不代表实时持仓。第一版预设 NVDA、AAPL、MSFT、TSLA、META。</p>
+      <p className="note">
+        持仓来自基金定期报告，不代表实时持仓。基金池由全量 QDII 季报持仓索引发现；非指数产品全部展示，同一指数跟踪产品默认折叠。
+      </p>
 
       <div className="stock-selector">
         <div className="segmented-control" aria-label="选择股票">
@@ -66,6 +71,16 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
         </form>
       </div>
       <p className="query-chip">当前查询：{selectedStock}</p>
+      {meta ? (
+        <p className="stock-meta">
+          报告期 {meta.reportPeriod ?? "—"}
+          {" · "}
+          数据源 {formatDataSource(meta.dataSource)}
+          {!expandPeers && meta.collapsedIndexPeers > 0 ? (
+            <> · 已折叠 {meta.collapsedIndexPeers} 只同类指数产品（共 {meta.totalBeforeDedupe} 只）</>
+          ) : null}
+        </p>
+      ) : null}
       <div className="segmented-control stock-filter" aria-label="筛选持仓基金">
         {FILTER_OPTIONS.map((option) => (
           <button
@@ -78,6 +93,14 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
           </button>
         ))}
       </div>
+      <label className="dedupe-toggle">
+        <input
+          type="checkbox"
+          checked={expandPeers}
+          onChange={(event) => onExpandPeersChange(event.target.checked)}
+        />
+        展开全部同类指数产品
+      </label>
 
       <div className="table-wrap">
         <table>
@@ -85,6 +108,7 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
             <tr>
               <th>排名</th>
               <th>基金</th>
+              <th>类型</th>
               <th>份额</th>
               <th>市场</th>
               <th>持仓股票</th>
@@ -100,7 +124,7 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
           <tbody>
             {filteredRows.length === 0 ? (
               <tr>
-                <td colSpan={12}>暂无 {selectedStock} 持仓数据</td>
+                <td colSpan={13}>暂无 {selectedStock} 持仓数据</td>
               </tr>
             ) : (
               filteredRows.map((row, index) => (
@@ -109,6 +133,7 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
                   <td>
                     <span className="mono">{row.fundCode}</span> {row.fundName}
                   </td>
+                  <td>{row.fundKind ?? "—"}</td>
                   <td>{row.shareClass}</td>
                   <td>{formatVenue(row.venue)}</td>
                   <td>{row.stockCode || row.stockName}</td>
@@ -127,6 +152,11 @@ export function StockConcentration({ selectedStock, rows, onSelectStock }: Props
       </div>
     </section>
   );
+}
+
+function formatDataSource(source: StockConcentrationMeta["dataSource"]): string {
+  if (source === "stock_fund_index") return "持仓索引";
+  return "原始持仓";
 }
 
 function matchesFilter(row: StockConcentrationRow, filter: StockFilter): boolean {

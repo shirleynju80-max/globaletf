@@ -25,7 +25,10 @@ describe("StockConcentration", () => {
             source: "eastmoney"
           }
         ]}
+        meta={null}
         onSelectStock={() => undefined}
+        expandPeers={false}
+        onExpandPeersChange={() => undefined}
       />
     );
 
@@ -49,7 +52,10 @@ describe("StockConcentration", () => {
       <StockConcentration
         selectedStock="NVDA"
         rows={[]}
+        meta={null}
         onSelectStock={onSelectStock}
+        expandPeers={false}
+        onExpandPeersChange={() => undefined}
       />
     );
 
@@ -101,7 +107,10 @@ describe("StockConcentration", () => {
             source: "eastmoney"
           }
         ]}
+        meta={null}
         onSelectStock={() => undefined}
+        expandPeers={false}
+        onExpandPeersChange={() => undefined}
       />
     );
 
@@ -120,7 +129,10 @@ describe("StockConcentration", () => {
       <StockConcentration
         selectedStock="GOOG"
         rows={[]}
+        meta={null}
         onSelectStock={() => undefined}
+        expandPeers={false}
+        onExpandPeersChange={() => undefined}
       />
     );
 

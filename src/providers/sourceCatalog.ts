@@ -38,7 +38,7 @@ export const ON_EXCHANGE_SOURCES: SourceDescriptor[] = [
     endpointPattern: "ak.fund_etf_hist_em(symbol, period='daily', adjust='') / ak.fund_lof_hist_em(symbol, period='daily', adjust='')",
     parsingMode: "library_adapter",
     provides: ["close_price", "turnover", "trade_date"],
-    notes: "Primary source for previous completed trading day close and turnover."
+    notes: "Primary source for previous completed trading day close and turnover. Retries primary host, then alternate referer/host/token, before spot fallback."
   },
   {
     name: "akshare-eastmoney-open-fund-nav",
@@ -51,8 +51,8 @@ export const ON_EXCHANGE_SOURCES: SourceDescriptor[] = [
     name: "eastmoney-etf-spot-cross-check",
     endpointPattern: "ak.fund_etf_spot_em() / East Money push2delay clist",
     parsingMode: "library_adapter",
-    provides: ["quote_screen_premium_discount", "latest_price", "turnover"],
-    notes: "ETF-only lower-confidence cross-check. Do not use for intraday estimated NAV in the first release."
+    provides: ["quote_screen_premium_discount", "latest_price"],
+    notes: "ETF-only lower-confidence cross-check for price/IOPV. Turnover always comes from previous-day daily kline."
   }
 ];
 

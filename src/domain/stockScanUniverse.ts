@@ -1,5 +1,6 @@
 import type { Fund } from "./types";
 
+/** Curated non-index QDII seeds; live sync also discovers active QDII via stockHoldingFundDiscovery. */
 export const STOCK_SCAN_FUNDS: Fund[] = [
   {
     code: "539002",

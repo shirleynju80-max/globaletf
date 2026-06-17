@@ -150,8 +150,17 @@ function isTargetRelevantRow(row: FundSearchRow, targetCode: string): boolean {
   return true;
 }
 
-function isForeignCurrencyShare(name: string): boolean {
+export function isForeignCurrencyShare(name: string): boolean {
   return /美元|现汇|现钞/.test(name);
+}
+
+export async function fetchEastMoneyFundSuggestionsForQueries(
+  fetchImpl: typeof fetch,
+  queries: string[]
+): Promise<FundSearchRow[]> {
+  const uniqueQueries = [...new Set(queries.map((query) => query.trim()).filter(Boolean))];
+  const results = await Promise.all(uniqueQueries.map((query) => fetchSuggestionRowsForQuery(fetchImpl, query)));
+  return results.flat();
 }
 
 function toFund(row: FundSearchRow, targetCode: string): Fund | undefined {
