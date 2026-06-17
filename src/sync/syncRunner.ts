@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import { insertSnapshotBundle, recordFundDiscoveryManifest, recordProviderResults, recordSyncRun, recordSyncStatus, replaceDiscoveryProfileGaps, queryCachedHoldingsByFundCode, type ProviderResultRow, type SyncStatusRow } from "../db/repositories";
 import { INDEX_TARGETS, INDEX_TARGET_FUND_SEED_FUNDS, INDEX_TARGET_FUND_SEEDS } from "../domain/targets";
 import { isDelistedOnExchange } from "../domain/delistedOnExchange";
-import type { FeeTier, Fund, FundHolding, FundQuote, PurchaseLimit } from "../domain/types";
+import type { FeeTier, Fund, FundHolding, FundQuote, ProductVenue, PurchaseLimit } from "../domain/types";
 import { STOCK_SCAN_FUNDS } from "../domain/stockScanUniverse";
 import { createEastMoneyMultiTargetFundSearchProvider } from "../providers/eastmoneyFundSearch";
 import { createAgencyAugmentedFundDiscoveryProvider, mergeFundsByCode } from "../providers/agencyFundDiscovery";
@@ -21,6 +21,7 @@ import { enrichQuoteWithMatchedIopv, normalizeOnExchangeQuoteSource } from "./io
 import { syncFundTrackingProfiles, applyProfileDiscoverySources } from "./trackingProfileSync";
 import { mergeFundsForHoldingsSync } from "./holdingsSyncUniverse";
 import { finalizeStockHoldingIndex } from "./stockHoldingIndexSync";
+import { mergeFundsForLimitsSync } from "./limitsSyncUniverse";
 import { loadQdiiHoldingsCatalog } from "../providers/qdiiHoldingsCatalog";
 
 export type SyncArea = "fund" | "quote" | "offExchange" | "holding";
@@ -42,7 +43,7 @@ interface ResolvedData<T> {
   isFallback: boolean;
   providerResults: ProviderAttempt[];
   status: Omit<SyncStatusRow, "area" | "updatedAt">;
-  discoveryProfileGaps?: Array<{ targetCode: string; fundCode: string; venue: string }>;
+  discoveryProfileGaps?: Array<{ targetCode: string; fundCode: string; venue: ProductVenue }>;
 }
 
 interface ResolvedOffExchange {
@@ -295,8 +296,22 @@ async function enrichQuotes(db: Database.Database, quotes: FundQuote[], fetchImp
   });
 }
 
+async function resolveLimitsSyncFunds(
+  db: Database.Database,
+  options: DailySyncOptions,
+  fundSnapshot: ResolvedData<Fund[]>
+): Promise<Fund[]> {
+  let funds = mergeFundsForLimitsSync(fundSnapshot.data, queryCachedFunds(db));
+  if (options.useLiveProviders) {
+    const catalog = await resolveQdiiHoldingsCatalog(options);
+    funds = mergeFundsForLimitsSync(funds, catalog);
+  }
+  return funds;
+}
+
 async function resolveOffExchangeSnapshot(db: Database.Database, options: DailySyncOptions, fundSnapshot: ResolvedData<Fund[]>): Promise<ResolvedOffExchange> {
-  const providers = options.offExchangeProviders ?? (options.useLiveProviders ? [createMergedOffExchangeProvider(fundSnapshot.data)] : []);
+  const limitsFunds = await resolveLimitsSyncFunds(db, options, fundSnapshot);
+  const providers = options.offExchangeProviders ?? (options.useLiveProviders ? [createMergedOffExchangeProvider(limitsFunds)] : []);
   if (providers.length === 0) return resolvedOffExchangeOk({ limits: mockLimits, fees: mockFees }, "mock", true);
 
   try {
@@ -355,7 +370,7 @@ function resolvedOk<T>(
   freshItemCount?: number,
   cachedItemCount?: number,
   providerResults: ProviderAttempt[] = [],
-  discoveryProfileGaps?: Array<{ targetCode: string; fundCode: string; venue: string }>
+  discoveryProfileGaps?: Array<{ targetCode: string; fundCode: string; venue: ProductVenue }>
 ): ResolvedData<T[]> {
   return {
     data,

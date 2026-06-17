@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Fund } from "../domain/types";
 import { createInMemoryDatabase } from "../db/database";
 import { insertSnapshotBundle, rebuildStockFundIndex, recordFundDiscoveryManifest, recordProviderResults, recordSyncRun, recordSyncStatus, replaceDiscoveryProfileGaps } from "../db/repositories";
 import { CATALOG_DIRECT_SHARE_FUNDS, CATALOG_FUNDS } from "../domain/fundCatalog";
@@ -265,12 +266,14 @@ function createAcceptanceDatabase(overrides: {
     { code: "019449", name: "摩根日经225联接A", fundType: "QDII", venue: "off_exchange" as const, trackingTargetCode: "NIKKEI_225", shareClass: "A" as const, enabled: true },
     { code: "513180", name: "恒生科技指数ETF", fundType: "ETF", venue: "on_exchange" as const, trackingTargetCode: "HSTECH", shareClass: "ETF" as const, enabled: true },
     { code: "513010", name: "恒生科技ETF", fundType: "ETF", venue: "on_exchange" as const, trackingTargetCode: "HSTECH", shareClass: "ETF" as const, enabled: true },
-    { code: "012348", name: "华夏恒生科技ETF联接A", fundType: "QDII", venue: "off_exchange" as const, trackingTargetCode: "HSTECH", shareClass: "A" as const, enabled: true }
+    { code: "012348", name: "华夏恒生科技ETF联接A", fundType: "QDII", venue: "off_exchange" as const, trackingTargetCode: "HSTECH", shareClass: "A" as const, enabled: true },
+    { code: "513900", name: "韩国综合ETF", fundType: "ETF", venue: "on_exchange" as const, trackingTargetCode: "KOSPI", shareClass: "ETF" as const, enabled: true },
+    { code: "019900", name: "韩国综合指数联接A", fundType: "QDII", venue: "off_exchange" as const, trackingTargetCode: "KOSPI", shareClass: "A" as const, enabled: true }
   ] : [];
   const stockScanFunds = overrides.includeStockScanFunds === false ? [] : [
     { code: "539002", name: "建信新兴市场混合(QDII)A", fundType: "QDII-混合偏股", venue: "off_exchange" as const, shareClass: "A" as const, enabled: true }
   ];
-  const allFunds = [...nasdaqCatalog, ...stockScanFunds, ...otherIndexFunds];
+  const allFunds: Fund[] = [...nasdaqCatalog, ...stockScanFunds, ...otherIndexFunds];
   insertSnapshotBundle(db, {
     syncRunId: "acceptance-run",
     funds: allFunds,
@@ -357,6 +360,7 @@ function trackingIndexLabel(targetCode: string): string {
     case "SP_500": return "标普500指数";
     case "NIKKEI_225": return "日经225指数";
     case "HSTECH": return "恒生科技指数";
+    case "KOSPI": return "韩国综合股价指数";
     default: return "纳斯达克100指数";
   }
 }

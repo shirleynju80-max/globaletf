@@ -141,7 +141,7 @@ function matchesTarget(row: FundSearchRow, target: TargetSelection): boolean {
   });
 }
 
-const OVERSEAS_INDEX_TARGETS = new Set(["NASDAQ_100", "SP_500", "NIKKEI_225"]);
+const OVERSEAS_INDEX_TARGETS = new Set(["NASDAQ_100", "SP_500", "NIKKEI_225", "KOSPI"]);
 
 function isTargetRelevantRow(row: FundSearchRow, targetCode: string): boolean {
   const haystack = `${row.type} ${row.name}`;

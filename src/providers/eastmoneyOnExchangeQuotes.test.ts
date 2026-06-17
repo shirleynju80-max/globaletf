@@ -111,7 +111,7 @@ describe("East Money previous-day kline fetch", () => {
   });
 
   it("falls back to an alternate kline host after primary retries fail", async () => {
-    const fetchImpl = vi.fn(async (url: Parameters<typeof fetch>[0]) => {
+    const fetchMock = vi.fn(async (url: Parameters<typeof fetch>[0]) => {
       const target = String(url);
       if (target.includes("stock/kline") && target.startsWith("https://push2his.eastmoney.com")) {
         return new Response("error", { status: 502 });
@@ -120,12 +120,13 @@ describe("East Money previous-day kline fetch", () => {
         return respond(klineJson);
       }
       return new Response("not found", { status: 404 });
-    }) as unknown as typeof fetch;
+    });
+    const fetchImpl = fetchMock as unknown as typeof fetch;
 
     const row = await safeFetchPreviousDayKline(fetchImpl, "159513", "2026-06-10", 5_000);
 
     expect(row).toMatchObject({ closePrice: 1.23, turnover: 56000000, tradeDate: "2026-06-09" });
-    expect(fetchImpl.mock.calls.some((call) => String(call[0]).startsWith("http://push2his.eastmoney.com"))).toBe(true);
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).startsWith("http://push2his.eastmoney.com"))).toBe(true);
   });
 });
 

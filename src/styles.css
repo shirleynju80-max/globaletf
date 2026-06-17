@@ -19,6 +19,41 @@ body {
   margin-bottom: 24px;
 }
 
+.hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.home-link {
+  border: 1px solid #dbe5e7;
+  border-radius: 999px;
+  padding: 6px 12px;
+  color: #244541;
+  background: #f4f7f8;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.home-link:hover {
+  border-color: #24716b;
+  color: #1e625d;
+}
+
+.home-link:focus-visible {
+  outline: 2px solid #24716b;
+  outline-offset: 2px;
+}
+
+.hero-top .eyebrow {
+  margin: 0;
+}
+
 .hero h1 {
   max-width: 760px;
   margin: 0 0 10px;
@@ -240,6 +275,34 @@ body {
   overflow-x: auto;
 }
 
+table.data-table {
+  width: 100%;
+  table-layout: auto;
+  margin-top: 12px;
+  border-collapse: collapse;
+}
+
+table.data-table .col-name {
+  min-width: 10rem;
+  max-width: 22rem;
+  white-space: normal;
+  word-break: break-word;
+}
+
+table.data-table .col-redemption {
+  width: 6.5rem;
+  max-width: 6.5rem;
+  white-space: normal;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+table.data-table th:not(.col-name):not(.col-redemption),
+table.data-table td:not(.col-name):not(.col-redemption) {
+  white-space: nowrap;
+}
+
 table {
   width: 100%;
   min-width: 820px;
@@ -299,7 +362,7 @@ td {
 }
 
 .premium-primary {
-  font-weight: 600;
+  font-weight: inherit;
 }
 
 .premium-secondary {

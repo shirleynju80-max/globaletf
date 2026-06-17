@@ -1,35 +1,38 @@
 import { useState, type FormEvent } from "react";
-import type { StockConcentrationMeta, StockConcentrationRow } from "../db/repositories";
+import type { StockConcentrationRow } from "../db/repositories";
+import { lookupStockKey } from "../domain/stockHoldingIndex";
+import { STOCK_TARGETS, findTargetByCode } from "../domain/targets";
+import {
+  matchesStockConcentrationFilters,
+  toggleStockConcentrationFilter,
+  type StockConcentrationFilterKey
+} from "./stockConcentrationFilters";
 
-const STOCK_OPTIONS = ["NVDA", "AAPL", "MSFT", "TSLA", "META"];
-const FILTER_OPTIONS = [
-  { key: "all", label: "全部" },
+const FILTER_OPTIONS: Array<{ key: StockConcentrationFilterKey; label: string }> = [
   { key: "purchasable", label: "可申购" },
   { key: "on_exchange", label: "场内" },
   { key: "off_exchange", label: "场外" }
-] as const;
-
-type StockFilter = (typeof FILTER_OPTIONS)[number]["key"];
+];
 
 interface Props {
   selectedStock: string;
   rows: StockConcentrationRow[];
-  meta: StockConcentrationMeta | null;
   expandPeers: boolean;
   onSelectStock: (stockCode: string) => void;
   onExpandPeersChange: (expandPeers: boolean) => void;
 }
 
-export function StockConcentration({ selectedStock, rows, meta, expandPeers, onSelectStock, onExpandPeersChange }: Props) {
+export function StockConcentration({ selectedStock, rows, expandPeers, onSelectStock, onExpandPeersChange }: Props) {
   const [customStock, setCustomStock] = useState("");
-  const [filter, setFilter] = useState<StockFilter>("all");
-  const filteredRows = rows.filter((row) => matchesFilter(row, filter));
+  const [activeFilters, setActiveFilters] = useState<StockConcentrationFilterKey[]>([]);
+  const filteredRows = (rows ?? []).filter((row) => matchesStockConcentrationFilters(row, activeFilters));
 
   function submitCustomStock(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const normalized = customStock.trim().toUpperCase();
-    if (!normalized) return;
-    onSelectStock(normalized);
+    const input = customStock.trim();
+    if (!input) return;
+    const target = findTargetByCode(input);
+    onSelectStock(target?.code ?? lookupStockKey(input));
   }
 
   return (
@@ -41,25 +44,22 @@ export function StockConcentration({ selectedStock, rows, meta, expandPeers, onS
         </div>
         <span className="source-pill">定期报告</span>
       </div>
-      <p className="note">
-        持仓来自基金定期报告，不代表实时持仓。基金池由全量 QDII 季报持仓索引发现；非指数产品全部展示，同一指数跟踪产品默认折叠。
-      </p>
 
       <div className="stock-selector">
-        <div className="segmented-control" aria-label="选择股票">
-          {STOCK_OPTIONS.map((stockCode) => (
+        <div className="segmented-control stock-picker" aria-label="选择股票">
+          {STOCK_TARGETS.map((stock) => (
             <button
-              key={stockCode}
-              className={stockCode === selectedStock ? "active" : ""}
+              key={stock.code}
+              className={stock.code === selectedStock ? "active" : ""}
               type="button"
-              onClick={() => onSelectStock(stockCode)}
+              onClick={() => onSelectStock(stock.code)}
             >
-              {stockCode}
+              {stock.name}
             </button>
           ))}
         </div>
         <form className="stock-search" onSubmit={submitCustomStock}>
-          <label htmlFor="custom-stock">自定义股票代码</label>
+          <label htmlFor="custom-stock">股票名称/代码</label>
           <input
             id="custom-stock"
             value={customStock}
@@ -70,24 +70,23 @@ export function StockConcentration({ selectedStock, rows, meta, expandPeers, onS
           <button type="submit">查询股票</button>
         </form>
       </div>
-      <p className="query-chip">当前查询：{selectedStock}</p>
-      {meta ? (
-        <p className="stock-meta">
-          报告期 {meta.reportPeriod ?? "—"}
-          {" · "}
-          数据源 {formatDataSource(meta.dataSource)}
-          {!expandPeers && meta.collapsedIndexPeers > 0 ? (
-            <> · 已折叠 {meta.collapsedIndexPeers} 只同类指数产品（共 {meta.totalBeforeDedupe} 只）</>
-          ) : null}
-        </p>
-      ) : null}
+      <p className="query-chip">当前查询：{formatSelectedStockLabel(selectedStock)}</p>
       <div className="segmented-control stock-filter" aria-label="筛选持仓基金">
+        <button
+          type="button"
+          className={activeFilters.length === 0 ? "active" : ""}
+          aria-pressed={activeFilters.length === 0}
+          onClick={() => setActiveFilters([])}
+        >
+          全部
+        </button>
         {FILTER_OPTIONS.map((option) => (
           <button
             key={option.key}
-            className={filter === option.key ? "active" : ""}
+            className={activeFilters.includes(option.key) ? "active" : ""}
             type="button"
-            onClick={() => setFilter(option.key)}
+            aria-pressed={activeFilters.includes(option.key)}
+            onClick={() => setActiveFilters((current) => toggleStockConcentrationFilter(current, option.key))}
           >
             {option.label}
           </button>
@@ -103,34 +102,31 @@ export function StockConcentration({ selectedStock, rows, meta, expandPeers, onS
       </label>
 
       <div className="table-wrap">
-        <table>
+        <table className="data-table">
           <thead>
             <tr>
               <th>排名</th>
-              <th>基金</th>
+              <th className="col-name">基金</th>
               <th>类型</th>
               <th>份额</th>
               <th>市场</th>
               <th>持仓股票</th>
               <th>净值占比</th>
-              <th>持仓市值</th>
               <th>申购状态</th>
               <th>限额</th>
-              <th>限购日期</th>
               <th>报告期</th>
-              <th>来源</th>
             </tr>
           </thead>
           <tbody>
             {filteredRows.length === 0 ? (
               <tr>
-                <td colSpan={13}>暂无 {selectedStock} 持仓数据</td>
+                <td colSpan={10}>暂无 {formatSelectedStockLabel(selectedStock)} 持仓数据</td>
               </tr>
             ) : (
               filteredRows.map((row, index) => (
                 <tr key={`${row.fundCode}-${row.stockCode}-${row.reportPeriod}`}>
                   <td>{index + 1}</td>
-                  <td>
+                  <td className="col-name">
                     <span className="mono">{row.fundCode}</span> {row.fundName}
                   </td>
                   <td>{row.fundKind ?? "—"}</td>
@@ -138,12 +134,9 @@ export function StockConcentration({ selectedStock, rows, meta, expandPeers, onS
                   <td>{formatVenue(row.venue)}</td>
                   <td>{row.stockCode || row.stockName}</td>
                   <td>{formatNavPercent(row.navPercent)}</td>
-                  <td>{formatCurrency(row.holdingMarketValue)}</td>
-                  <td>{formatPurchaseStatus(row.purchaseStatus)}</td>
+                  <td>{formatPurchaseStatus(row)}</td>
                   <td>{formatLimit(row)}</td>
-                  <td>{row.limitDataDate ?? "-"}</td>
                   <td>{row.reportPeriod}</td>
-                  <td>{row.source}</td>
                 </tr>
               ))
             )}
@@ -154,16 +147,10 @@ export function StockConcentration({ selectedStock, rows, meta, expandPeers, onS
   );
 }
 
-function formatDataSource(source: StockConcentrationMeta["dataSource"]): string {
-  if (source === "stock_fund_index") return "持仓索引";
-  return "原始持仓";
-}
-
-function matchesFilter(row: StockConcentrationRow, filter: StockFilter): boolean {
-  if (filter === "on_exchange") return row.venue === "on_exchange";
-  if (filter === "off_exchange") return row.venue === "off_exchange";
-  if (filter === "purchasable") return row.venue === "on_exchange" || row.purchaseStatus === "open" || row.purchaseStatus === "limited";
-  return true;
+function formatSelectedStockLabel(stockCode: string): string {
+  const target = findTargetByCode(stockCode);
+  if (target) return `${target.name} (${target.code})`;
+  return stockCode;
 }
 
 function formatVenue(venue: string): string {
@@ -183,19 +170,28 @@ function formatCurrency(value?: number | null): string {
   return `${value.toLocaleString("zh-CN")} 元`;
 }
 
-function formatPurchaseStatus(status?: string | null): string {
-  if (status === "limited") return "限购";
-  if (status === "open") return "开放";
-  if (status === "suspended") return "暂停";
-  return "-";
+function formatPurchaseStatus(row: { purchaseStatus?: string | null; venue?: string; shareClass?: string }): string {
+  if (row.purchaseStatus === "limited") return "限购";
+  if (row.purchaseStatus === "open") return "开放";
+  if (row.purchaseStatus === "suspended") return "暂停";
+  if (row.venue === "on_exchange" && row.shareClass === "ETF") return "场内交易";
+  if (row.venue === "on_exchange" && row.shareClass === "LOF") return "—";
+  return "—";
 }
 
-function formatLimit(row: { purchaseStatus?: string | null; limitAmountYuan?: number | null; limitUnit?: string | null }): string {
+function formatLimit(row: {
+  purchaseStatus?: string | null;
+  limitAmountYuan?: number | null;
+  limitUnit?: string | null;
+  venue?: string;
+  shareClass?: string;
+}): string {
   if (row.limitAmountYuan != null) return `${formatCurrency(row.limitAmountYuan)}${formatLimitUnit(row.limitUnit)}`;
   if (row.purchaseStatus === "open") return "开放申购";
   if (row.purchaseStatus === "limited") return "限额待确认";
   if (row.purchaseStatus === "suspended") return "暂停申购";
-  return "-";
+  if (row.venue === "on_exchange" && row.shareClass === "ETF") return "场内交易";
+  return "—";
 }
 
 function formatLimitUnit(unit?: string | null): string {

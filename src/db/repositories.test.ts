@@ -38,7 +38,7 @@ describe("repositories", () => {
       managementRate: 0.008,
       custodianRate: 0.002,
       salesServiceRate: 0,
-      redemptionFeeSummary: "0-6天: 1.50%; 7-29天: 0.50%"
+      redemptionFeeSummary: "0-6天: 1.5%; 7-29天: 0.5%"
     });
   });
 
@@ -432,6 +432,36 @@ describe("repositories", () => {
     ]);
   });
 
+  it("enriches on-exchange LOF rows with OTC purchase limits", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "161128", name: "易方达标普信息科技指数(QDII-LOF)A(人民币)", fundType: "QDII", venue: "on_exchange", shareClass: "LOF", enabled: true }
+      ],
+      quotes: [],
+      limits: [
+        { fundCode: "161128", shareClass: "LOF", status: "limited", limitAmountYuan: 100, limitUnit: "per_day", channelScope: "agency", channelId: "eastmoney_aggregate", source: "tiantian-f10-jjfl", dataDate: "2026-06-16", confidence: 0.9, syncRunId: "run-1" }
+      ],
+      fees: [],
+      holdings: [
+        { fundCode: "161128", stockCode: "NVDA", stockName: "英伟达", navPercent: 20.16, reportPeriod: "2026Q1", source: "eastmoney", syncRunId: "run-1" }
+      ]
+    });
+
+    const result = queryStockConcentration(db, "NVDA");
+
+    expect(result.rows[0]).toMatchObject({
+      fundCode: "161128",
+      venue: "on_exchange",
+      shareClass: "LOF",
+      purchaseStatus: "limited",
+      limitAmountYuan: 100,
+      limitUnit: "per_day",
+      limitDataDate: "2026-06-16"
+    });
+  });
+
   it("dedupes homogeneous index trackers while keeping non-index funds", () => {
     const db = createInMemoryDatabase();
     insertSnapshotBundle(db, {
@@ -479,6 +509,29 @@ describe("repositories", () => {
 
     expect(queryStockConcentration(db, "NVDA").rows.map((row) => row.fundCode)).toEqual(["539002", "513100"]);
     expect(queryStockConcentration(db, "英伟达").rows.map((row) => row.fundCode)).toEqual(["539002", "513100"]);
+  });
+
+  it("resolves HYNIX tab queries against legacy SK海力士 index keys", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "513310", name: "中韩半导体ETF华泰柏瑞", fundType: "ETF", venue: "on_exchange", shareClass: "ETF", enabled: true },
+        { code: "539002", name: "建信新兴市场混合(QDII)A", fundType: "QDII", venue: "off_exchange", shareClass: "A", enabled: true }
+      ],
+      quotes: [],
+      limits: [],
+      fees: [],
+      holdings: [
+        { fundCode: "513310", stockCode: "000660", stockName: "SK海力士", navPercent: 15.53, reportPeriod: "2026Q1", source: "eastmoney-f10-jjcc", syncRunId: "run-1" },
+        { fundCode: "539002", stockCode: "000660", stockName: "SK海力士", navPercent: 4.2, reportPeriod: "2026Q1", source: "eastmoney-f10-jjcc", syncRunId: "run-1" }
+      ]
+    });
+    rebuildStockFundIndex(db, "run-1");
+    db.prepare(`UPDATE stock_fund_index SET stock_key = 'SK海力士' WHERE stock_key = 'HYNIX'`).run();
+
+    expect(queryStockConcentration(db, "HYNIX").rows.map((row) => row.fundCode)).toEqual(["513310", "539002"]);
+    expect(queryStockConcentration(db, "海力士").rows.map((row) => row.fundCode)).toEqual(["513310", "539002"]);
   });
 
   it("records sync status by data area", () => {

@@ -1,4 +1,4 @@
-import { defaultChannelIdForFund, defaultChannelScopeForShareClass } from "../domain/purchaseLimits";
+import { defaultChannelIdForFund, defaultChannelScopeForShareClass, isOtcPurchaseLimitFund } from "../domain/purchaseLimits";
 import { parseMoneyYuan, parsePurchaseStatus } from "../domain/limitText";
 import type { FeeTier, Fund, PurchaseLimit } from "../domain/types";
 import type { DataProvider, ProviderFetchResult } from "./types";
@@ -76,7 +76,7 @@ export function createEastMoneyF10OffExchangeProvider(funds: Fund[], options: Pr
 
       try {
         const results = await mapConcurrent(
-          funds.filter((item) => item.enabled && item.venue === "off_exchange"),
+          funds.filter(isOtcPurchaseLimitFund),
           concurrency,
           async (fund) => fetchFundFeesAndLimits(fetchImpl, fund, dataDate, syncRunId, options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS)
         );
@@ -88,7 +88,7 @@ export function createEastMoneyF10OffExchangeProvider(funds: Fund[], options: Pr
           }
         }
 
-        if (limits.length === 0) return { ok: false, errorCategory: "missing_fields", message: "No enabled off-exchange funds to fetch" };
+        if (limits.length === 0) return { ok: false, errorCategory: "missing_fields", message: "No enabled OTC purchase-limit funds to fetch" };
         return { ok: true, data: { limits, fees }, source: SOURCE, dataDate, confidence: 0.9 };
       } catch (error) {
         return { ok: false, errorCategory: "network", message: error instanceof Error ? error.message : "Unknown F10 fetch error" };

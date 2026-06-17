@@ -13,10 +13,10 @@ export function summarizeRedemptionFees(tiers: FeeTier[]): string[] {
     .map((tier) => {
       const min = tier.minHoldingDays ?? 0;
       const max = tier.maxHoldingDays == null ? "以上" : `${tier.maxHoldingDays}`;
-      return `${min}-${max}天: ${formatPercent(tier.rate)}`;
+      return `${min}-${max}天: ${formatPercent(tier.rate, 1)}`;
     });
 }
 
-export function formatPercent(rate: number): string {
-  return `${(rate * 100).toFixed(2)}%`;
+export function formatPercent(rate: number, fractionDigits = 2): string {
+  return `${(rate * 100).toFixed(fractionDigits)}%`;
 }

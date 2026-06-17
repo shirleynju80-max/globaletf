@@ -18,8 +18,6 @@ describe("IndexComparison", () => {
     expect(screen.getByText("1.20%")).toBeInTheDocument();
     expect(screen.getByText("昨日成交额")).toBeInTheDocument();
     expect(screen.queryByText("交易成本提示")).not.toBeInTheDocument();
-    expect(screen.getByText(/场内表头可切换排序/)).toBeInTheDocument();
-    expect(screen.getByText(/场外基金合并展示直销与代销限额/)).toBeInTheDocument();
   });
 
   it("sorts on-exchange rows by live or snapshot premium descending", () => {
@@ -104,7 +102,6 @@ describe("IndexComparison", () => {
 
     expect(screen.getByRole("button", { name: /折溢价（实时）/ })).toBeInTheDocument();
     expect(screen.getByText("7.49%")).toBeInTheDocument();
-    expect(screen.getByText(/实时估值\(IOPV\)/)).toBeInTheDocument();
   });
 
   it("overlays live premium when background refresh returns newer values", () => {
@@ -122,7 +119,7 @@ describe("IndexComparison", () => {
       />
     );
 
-    expect(screen.getByText(/折溢价更新于/)).toBeInTheDocument();
+    expect(screen.getByText(/实时数据更新于/)).toBeInTheDocument();
     expect(screen.getByText("5.60%")).toBeInTheDocument();
   });
 
@@ -193,7 +190,7 @@ describe("IndexComparison", () => {
             limitUnit: "per_day",
             channelScope: "agency",
             defaultSubscriptionRate: 0.0012,
-            redemptionFeeSummary: "0-6天: 1.50%; 7-29天: 0.50%",
+            redemptionFeeSummary: "0-6天: 1.5%; 7-29天: 0.5%",
             managementRate: 0.008,
             custodianRate: 0.002,
             salesServiceRate: 0,
@@ -210,7 +207,7 @@ describe("IndexComparison", () => {
     expect(screen.queryByText("同步日")).not.toBeInTheDocument();
     expect(screen.queryByText("来源")).not.toBeInTheDocument();
     expect(screen.getByText("0.12%")).toBeInTheDocument();
-    expect(screen.getByText("0-6天: 1.50%; 7-29天: 0.50%")).toBeInTheDocument();
+    expect(screen.getByText("0-6天: 1.5%; 7-29天: 0.5%")).toBeInTheDocument();
     expect(screen.getByText("0.80% / 0.20% / 0.00%")).toBeInTheDocument();
   });
 
@@ -412,14 +409,6 @@ describe("IndexComparison", () => {
     const { container } = render(
       <IndexComparison
         targetName="纳斯达克100"
-        discoveryHealth={{
-          targetCode: "NASDAQ_100",
-          manifestCount: 53,
-          onExchangeCount: 14,
-          profileBackedOnExchange: 14,
-          profileGaps: [],
-          coverageGaps: []
-        }}
         data={{
           onExchange: [{
             code: "513100",
@@ -457,30 +446,10 @@ describe("IndexComparison", () => {
       />
     );
 
-    expect(screen.getByText("纳斯达克100 发现覆盖正常")).toBeInTheDocument();
     expect(screen.getByText("场外基金")).toBeInTheDocument();
     expect(container.querySelector(".row-direct-limit")).toBeTruthy();
     expect(screen.getByText("5,000 元/日")).toBeInTheDocument();
     expect(screen.queryByText("可买性")).not.toBeInTheDocument();
   });
 
-  it("warns when discovery profile gaps are present", () => {
-    render(
-      <IndexComparison
-        targetName="纳斯达克100"
-        discoveryHealth={{
-          targetCode: "NASDAQ_100",
-          manifestCount: 50,
-          onExchangeCount: 12,
-          profileBackedOnExchange: 10,
-          profileGaps: [{ targetCode: "NASDAQ_100", fundCode: "159999", venue: "on_exchange" }],
-          coverageGaps: []
-        }}
-        data={{ onExchange: [], offExchange: [] }}
-      />
-    );
-
-    expect(screen.getByText("纳斯达克100 发现覆盖需关注")).toBeInTheDocument();
-    expect(screen.getByText(/159999/)).toBeInTheDocument();
-  });
 });

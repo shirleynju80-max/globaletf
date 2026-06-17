@@ -1,4 +1,4 @@
-import { matchesStockTarget } from "./holdings";
+import { matchesStockTarget, stockTargetLookupKeys } from "./holdings";
 import { STOCK_TARGETS } from "./targets";
 import type { FundHolding } from "./types";
 
@@ -70,4 +70,8 @@ export function lookupStockKey(stockCode: string): string {
     matchesStockTarget({ targetCode: target.code, stockCode, stockName: stockCode })
   );
   return preset?.code ?? stockCode.trim().toUpperCase();
+}
+
+export function stockIndexLookupKeys(stockKey: string): string[] {
+  return stockTargetLookupKeys(stockKey);
 }

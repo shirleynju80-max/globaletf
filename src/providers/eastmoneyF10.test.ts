@@ -90,6 +90,28 @@ describe("East Money F10 parser", () => {
 });
 
 describe("East Money F10 provider", () => {
+  it("fetches F10 limits for cross-listed LOF funds", async () => {
+    const fetchImpl = vi.fn(async () => new Response(sampleHtml, { status: 200 }));
+    const provider = createEastMoneyF10OffExchangeProvider(
+      [{
+        code: "161128",
+        name: "易方达标普信息科技指数(QDII-LOF)A(人民币)",
+        fundType: "QDII",
+        venue: "on_exchange",
+        shareClass: "LOF",
+        enabled: true
+      }],
+      { fetchImpl, dataDate: "2026-06-09", syncRunId: "run-1" }
+    );
+
+    const result = await provider.fetch();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(fetchImpl).toHaveBeenCalledWith("https://fundf10.eastmoney.com/jjfl_161128.html", expect.any(Object));
+    expect(result.data.limits[0]).toMatchObject({ fundCode: "161128", shareClass: "LOF", limitAmountYuan: 10 });
+  });
+
   it("fetches one F10 page per enabled off-exchange fund", async () => {
     const fetchImpl = vi.fn(async () => new Response(sampleHtml, { status: 200 }));
     const provider = createEastMoneyF10OffExchangeProvider([baseFund], {

@@ -1,8 +1,6 @@
 import { formatPercent } from "../domain/fees";
 import { channelIdLabel } from "../domain/channels";
 import { useMemo, useState } from "react";
-import type { DiscoveryHealthSummary } from "../api/client";
-import { DiscoveryHealthBanner } from "./DiscoveryHealthBanner";
 import { partitionOffExchangeRows } from "./offExchangePartition";
 
 type OnExchangeSortKey = "livePremium" | "closingPremium" | "turnover";
@@ -53,15 +51,13 @@ interface ComparisonRow {
 interface Props {
   targetName: string;
   data: { onExchange: ComparisonRow[]; offExchange: ComparisonRow[] };
-  discoveryHealth?: DiscoveryHealthSummary | null;
   livePremiums?: Record<string, LivePremium>;
   liveAsOf?: string | null;
   liveError?: string | null;
-  limitsAsOf?: string | null;
   limitsError?: string | null;
 }
 
-export function IndexComparison({ targetName, data, discoveryHealth, livePremiums, liveAsOf, liveError, limitsAsOf, limitsError }: Props) {
+export function IndexComparison({ targetName, data, livePremiums, liveAsOf, liveError, limitsError }: Props) {
   const [sortKey, setSortKey] = useState<OnExchangeSortKey>("livePremium");
   const [sortDesc, setSortDesc] = useState(true);
   const onExchangeRows = useMemo(
@@ -80,28 +76,25 @@ export function IndexComparison({ targetName, data, discoveryHealth, livePremium
 
   return (
     <section className="panel data-panel">
-      <DiscoveryHealthBanner health={discoveryHealth ?? null} targetName={targetName} />
       <div className="section-heading">
         <div>
           <p className="eyebrow">Index fund map</p>
           <h2>{targetName} 同标的产品比较</h2>
         </div>
         <div className="live-controls">
-          {liveAsOf ? <span className="live-asof">折溢价更新于 {formatClock(liveAsOf)}</span> : null}
-          {limitsAsOf ? <span className="live-asof">限额更新于 {formatClock(limitsAsOf)}</span> : null}
+          {liveAsOf ? <span className="live-asof">实时数据更新于 {formatClock(liveAsOf)}</span> : null}
         </div>
       </div>
       {liveError ? <p className="note live-error">实时折溢价更新失败：{liveError}</p> : null}
       {limitsError ? <p className="note live-error">场外限额刷新失败：{limitsError}</p> : null}
-      <p className="note">跨境基金的折溢价以「实时估值(IOPV)」为基准：溢价/折价 =（价格 − 实时估值）/ 实时估值。昨日收盘折溢价按最新披露单位净值计算，仅供参考。打开页面后会自动拉取实时折溢价，约每 90 秒后台静默更新；仍缺失的基金会单独补刷。场内表头可切换排序；场外基金合并展示直销与代销限额，默认按日申购限额从高到低排序，暂停申购与待核实默认折叠。场外限额状态取多源最严结果（暂停优先），打开页面后约每 30 分钟后台刷新限额快照。</p>
 
       <h3>场内 ETF/LOF</h3>
       <div className="table-wrap">
-        <table>
+        <table className="data-table">
           <thead>
             <tr>
               <th>代码</th>
-              <th>名称</th>
+              <th className="col-name">名称</th>
               <th>价格</th>
               <SortableHeader label="折溢价（实时）" sortKey="livePremium" activeKey={sortKey} sortDesc={sortDesc} onSort={handleSort} />
               <SortableHeader label="昨日收盘折溢价" sortKey="closingPremium" activeKey={sortKey} sortDesc={sortDesc} onSort={handleSort} />
@@ -119,7 +112,7 @@ export function IndexComparison({ targetName, data, discoveryHealth, livePremium
                 return (
                   <tr key={row.code}>
                     <td className="mono">{row.code}</td>
-                    <td>{row.name}</td>
+                    <td className="col-name">{row.name}</td>
                     <td>{live?.price ?? row.closePrice}</td>
                     <td className="premium-primary">{formatPrimaryPremium(row, live)}</td>
                     <td className="premium-secondary">{formatPremiumDiscount(row)}</td>
@@ -228,12 +221,12 @@ function OffExchangeTable({
   const colSpan = 9;
   return (
     <div className="table-wrap">
-      <table>
+      <table className="data-table">
         {!hideHeader ? (
           <thead>
             <tr>
               <th>代码</th>
-              <th>名称</th>
+              <th className="col-name">名称</th>
               <th>份额</th>
               <th>申购状态</th>
               <th>
@@ -242,7 +235,7 @@ function OffExchangeTable({
                 </button>
               </th>
               <th>申购费</th>
-              <th>赎回费</th>
+              <th className="col-redemption">赎回费</th>
               <th>运作费(管/托/销)</th>
               <th>渠道</th>
             </tr>
@@ -259,12 +252,12 @@ function OffExchangeTable({
             rows.map((row) => (
               <tr key={row.code} className={isDirectShareRow(row) ? "row-direct-limit" : undefined}>
                 <td className="mono">{row.code}</td>
-                <td>{row.name}</td>
+                <td className="col-name">{row.name}</td>
                 <td>{row.shareClass}</td>
                 <td><StatusPill row={row} showReviewFlags={showReviewFlags} /></td>
                 <td>{formatLimit(row)}</td>
                 <td>{formatOptionalPercent(row.defaultSubscriptionRate)}</td>
-                <td>{row.redemptionFeeSummary ?? "-"}</td>
+                <td className="col-redemption">{row.redemptionFeeSummary ?? "-"}</td>
                 <td>{formatOperationFees(row)}</td>
                 <td>{formatChannelScope(row.channelScope, row.channelId)}</td>
               </tr>

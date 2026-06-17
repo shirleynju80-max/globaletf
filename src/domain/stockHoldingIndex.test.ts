@@ -6,7 +6,9 @@ describe("stockHoldingIndex", () => {
   it("maps NVDA disclosures by code and Chinese name", () => {
     expect(canonicalStockKey("NVDA", "NVIDIA Corp")).toBe("NVDA");
     expect(canonicalStockKey("", "英伟达")).toBe("NVDA");
+    expect(canonicalStockKey("000660", "SK海力士")).toBe("HYNIX");
     expect(lookupStockKey("英伟达")).toBe("NVDA");
+    expect(lookupStockKey("海力士")).toBe("HYNIX");
   });
 
   it("builds index rows from latest report period holdings only", () => {

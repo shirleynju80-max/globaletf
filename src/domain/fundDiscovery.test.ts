@@ -15,6 +15,12 @@ describe("fundDiscovery", () => {
     expect(matchesDiscoveryNameHint("标普500ETF", "SP_500")).toBe(true);
   });
 
+  it("matches Korea composite hints but excludes semiconductor theme ETFs", () => {
+    expect(matchesDiscoveryNameHint("韩国综合ETF", "KOSPI")).toBe(true);
+    expect(matchesDiscoveryNameHint("中韩半导体ETF", "KOSPI")).toBe(false);
+    expect(matchesDiscoveryNameHint("中韩芯片ETF", "KOSPI")).toBe(false);
+  });
+
   it("prefers tracking-profile over weaker discovery sources", () => {
     expect(preferDiscoverySource("fundcode-search", "tracking-profile")).toBe("tracking-profile");
     expect(preferDiscoverySource("catalog-seed", "screener-name")).toBe("screener-name");

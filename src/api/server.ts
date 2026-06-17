@@ -1,4 +1,6 @@
 import express from "express";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 import { openDatabase } from "../db/database";
 import { queryIndexComparison, queryDiscoveryHealthForTarget, queryOnExchangeFundCodes, queryStockConcentration, querySyncStatus } from "../db/repositories";
@@ -106,6 +108,14 @@ export function createApp(db: Database.Database, options: CreateAppOptions = {})
     }
   });
 
+  const staticRoot = process.env.STATIC_ROOT ?? path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../dist");
+  if (process.env.SERVE_STATIC === "1") {
+    app.use(express.static(staticRoot));
+    app.get(/^(?!\/api).*/, (_req, res) => {
+      res.sendFile(path.join(staticRoot, "index.html"));
+    });
+  }
+
   return app;
 }
 
@@ -117,7 +127,9 @@ function parseFundCodeFilter(value: unknown): Set<string> | null {
 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const port = Number(process.env.PORT ?? 8787);
-  createApp(openDatabase()).listen(port, "127.0.0.1", () => {
-    console.log(`ETF Limit API listening on http://127.0.0.1:${port}`);
+  const host = process.env.HOST ?? "127.0.0.1";
+  const dbPath = process.env.DATABASE_PATH ?? "data/etflimit.sqlite";
+  createApp(openDatabase(dbPath)).listen(port, host, () => {
+    console.log(`ETF Limit API listening on http://${host}:${port}`);
   });
 }

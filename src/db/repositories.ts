@@ -3,7 +3,7 @@ import { formatPercent } from "../domain/fees";
 import { isDelistedOnExchange } from "../domain/delistedOnExchange";
 import { matchesStockTarget } from "../domain/holdings";
 import { dedupeStockConcentrationRows } from "../domain/stockConcentrationDedup";
-import { buildStockFundIndexRows, lookupStockKey } from "../domain/stockHoldingIndex";
+import { buildStockFundIndexRows, lookupStockKey, stockIndexLookupKeys } from "../domain/stockHoldingIndex";
 import { STOCK_TARGETS } from "../domain/targets";
 import type { FundSearchRow } from "../providers/eastmoneyFundSearch";
 import { reconcilePurchaseLimit } from "../domain/purchaseLimitReconciliation";
@@ -18,7 +18,7 @@ export interface SnapshotBundle {
   holdings: FundHolding[];
 }
 
-interface IndexComparisonRow {
+export interface IndexComparisonRow {
   code: string;
   name: string;
   venue: "on_exchange" | "off_exchange";
@@ -353,7 +353,12 @@ export function queryOnExchangeFundCodes(db: Database.Database, targetCode: stri
   return rows.filter((row) => !isDelistedOnExchange(row.code));
 }
 
-export function queryIndexComparison(db: Database.Database, targetCode: string): { onExchange: IndexComparisonRow[]; offExchange: IndexComparisonRow[] } {
+export type IndexComparisonResult = {
+  onExchange: IndexComparisonRow[];
+  offExchange: IndexComparisonRow[];
+};
+
+export function queryIndexComparison(db: Database.Database, targetCode: string): IndexComparisonResult {
   const rows = db.prepare(`
     SELECT
       f.code,
@@ -488,10 +493,10 @@ export function queryStockConcentration(
     if (rows.length > 0) {
       dataSource = "stock_fund_index";
     } else {
-      rows = queryStockConcentrationFromRawHoldings(db, stockCode);
+      rows = queryStockConcentrationFromRawHoldings(db, stockKey);
     }
   } else {
-    rows = queryStockConcentrationFromRawHoldings(db, stockCode);
+    rows = queryStockConcentrationFromRawHoldings(db, stockKey);
   }
 
   enrichStockConcentrationPurchaseLimits(db, rows);
@@ -555,12 +560,15 @@ function formatStockConcentrationFundKind(trackingTargetCode?: string | null): s
     NASDAQ_100: "纳指100",
     SP_500: "标普500",
     NIKKEI_225: "日经225",
-    HSTECH: "恒生科技"
+    HSTECH: "恒生科技",
+    KOSPI: "韩国综合"
   };
   return labels[trackingTargetCode] ?? trackingTargetCode;
 }
 
 function queryStockConcentrationFromIndex(db: Database.Database, stockKey: string): StockConcentrationRow[] {
+  const lookupKeys = stockIndexLookupKeys(stockKey);
+  const placeholders = lookupKeys.map(() => "?").join(", ");
   return db.prepare(`
     SELECT
       sfi.fund_code AS fundCode,
@@ -577,12 +585,12 @@ function queryStockConcentrationFromIndex(db: Database.Database, stockKey: strin
       sfi.source
     FROM stock_fund_index sfi
     JOIN funds f ON f.code = sfi.fund_code
-    WHERE sfi.stock_key = ?
+    WHERE sfi.stock_key IN (${placeholders})
       AND f.enabled = 1
-  `).all(stockKey) as StockConcentrationRow[];
+  `).all(...lookupKeys) as StockConcentrationRow[];
 }
 
-function queryStockConcentrationFromRawHoldings(db: Database.Database, stockCode: string): StockConcentrationRow[] {
+function queryStockConcentrationFromRawHoldings(db: Database.Database, targetCode: string): StockConcentrationRow[] {
   const rows = db.prepare(`
     SELECT
       h.fund_code AS fundCode,
@@ -603,7 +611,7 @@ function queryStockConcentrationFromRawHoldings(db: Database.Database, stockCode
   `).all() as StockConcentrationRow[];
 
   return rows.filter((row) =>
-    matchesStockTarget({ targetCode: stockCode, stockCode: row.stockCode, stockName: row.stockName })
+    matchesStockTarget({ targetCode, stockCode: row.stockCode, stockName: row.stockName })
   );
 }
 
@@ -621,15 +629,13 @@ function enrichOffExchangePurchaseLimits(db: Database.Database, rows: IndexCompa
 }
 
 function enrichStockConcentrationPurchaseLimits(db: Database.Database, rows: StockConcentrationRow[]): void {
-  const offExchangeRows = rows.filter((row) => row.venue === "off_exchange");
-  if (offExchangeRows.length === 0) return;
+  if (rows.length === 0) return;
 
-  const limitsByFund = loadPurchaseLimitsByFund(
-    db,
-    offExchangeRows.map((row) => row.fundCode)
-  );
-  for (const row of offExchangeRows) {
-    const reconciled = reconcilePurchaseLimit(row.shareClass as ShareClass, limitsByFund.get(row.fundCode) ?? []);
+  const limitsByFund = loadPurchaseLimitsByFund(db, rows.map((row) => row.fundCode));
+  for (const row of rows) {
+    const limits = limitsByFund.get(row.fundCode);
+    if (!limits?.length) continue;
+    const reconciled = reconcilePurchaseLimit(row.shareClass as ShareClass, limits);
     row.purchaseStatus = reconciled.status;
     row.limitAmountYuan = reconciled.limitAmountYuan;
     row.limitUnit = reconciled.limitUnit;
@@ -750,7 +756,7 @@ function summarizeRedemptionFees(fees: FeeRow[]): string | null {
   if (tiers.length === 0) return null;
 
   return tiers
-    .map((tier) => `${formatHoldingRange(tier)}: ${formatPercent(tier.rate)}`)
+    .map((tier) => `${formatHoldingRange(tier)}: ${formatPercent(tier.rate, 1)}`)
     .join("; ");
 }
 
