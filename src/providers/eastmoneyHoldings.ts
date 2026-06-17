@@ -141,7 +141,7 @@ async function fetchHoldingPage(fetchImpl: typeof fetch, fundCode: string, year:
   const url = `https://fundf10.eastmoney.com/FundArchivesDatas.aspx?type=jjcc&code=${fundCode}&year=${year}&topline=10`;
   const response = await fetchWithTimeout(fetchImpl, url, {
     headers: {
-      "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
+      "User-Agent": "Mozilla/5.0 globaletf/0.1",
       Referer: `https://fundf10.eastmoney.com/ccmx_${fundCode}.html`
     }
   }, requestTimeoutMs);

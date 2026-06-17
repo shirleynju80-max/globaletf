@@ -108,7 +108,7 @@ async function fetchFundFeesAndLimits(
   try {
     const response = await fetchWithTimeout(fetchImpl, url, {
       headers: {
-        "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
+        "User-Agent": "Mozilla/5.0 globaletf/0.1",
         Referer: "https://fund.eastmoney.com/"
       }
     }, requestTimeoutMs);

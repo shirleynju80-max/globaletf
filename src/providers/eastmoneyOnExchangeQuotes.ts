@@ -205,7 +205,7 @@ async function fetchSpotQuoteMap(
       const response = await fetchWithTimeout(
         fetchImpl,
         `${host}/api/qt/ulist.np/get?${params.toString()}`,
-        { headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://quote.eastmoney.com/" } },
+        { headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://quote.eastmoney.com/" } },
         timeoutMs
       );
       if (!response.ok) continue;
@@ -259,7 +259,7 @@ async function fetchKline(
   const response = await fetchWithTimeout(
     fetchImpl,
     `${target.host}${KLINE_PATH}?${params.toString()}`,
-    { headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: target.referer } },
+    { headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: target.referer } },
     timeoutMs
   );
   if (!response.ok) throw new Error(`kline returned ${response.status}`);
@@ -275,7 +275,7 @@ async function fetchNav(fetchImpl: typeof fetch, code: string, timeoutMs?: numbe
   const response = await fetchWithTimeout(
     fetchImpl,
     `https://fundf10.eastmoney.com/F10DataApi.aspx?${params.toString()}`,
-    { headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://fundf10.eastmoney.com/" } },
+    { headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://fundf10.eastmoney.com/" } },
     timeoutMs
   );
   if (!response.ok) throw new Error(`nav returned ${response.status}`);

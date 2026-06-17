@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { StockConcentrationRow } from "../db/repositories";
+import { SITE_NAME } from "../lib/brand";
 import { fetchStockConcentration } from "../api/client";
 import { SiteShell } from "../ui/SiteShell";
 import { StockConcentration } from "../ui/StockConcentration";
@@ -10,9 +11,9 @@ export function StockPage() {
   const [stockRows, setStockRows] = useState<StockConcentrationRow[]>([]);
 
   useEffect(() => {
-    document.title = "股票持仓 · ETF Limit";
+    document.title = `股票持仓 · ${SITE_NAME}`;
     return () => {
-      document.title = "ETF Limit";
+      document.title = SITE_NAME;
     };
   }, []);
 

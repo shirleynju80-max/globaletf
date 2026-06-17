@@ -24,6 +24,17 @@ Same layout works for a future WeChat mini-program (it only needs the API origin
 
 Replace `yourdomain.com` below with your real domain.
 
+### No custom domain yet?
+
+You can still ship option B with free subdomains:
+
+| Piece | Default URL | Build / config |
+|-------|-------------|----------------|
+| API | `https://<app-name>.fly.dev` | `fly deploy` — no `fly certs add` needed |
+| Web | `https://<project>.pages.dev` | Set `VITE_API_BASE=https://<app-name>.fly.dev` |
+
+Add a custom domain later without changing the architecture. Mainland WeChat mini-program and ICP 备案 still need your own domain when you get there.
+
 ---
 
 ## 1. API on Fly.io

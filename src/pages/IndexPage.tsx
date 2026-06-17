@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { INDEX_TARGETS } from "../domain/targets";
 import type { Target } from "../domain/types";
+import { SITE_NAME } from "../lib/brand";
 import { LIMITS_INITIAL_DELAY_MS, LIMITS_REFRESH_INTERVAL_MS } from "../ui/liveLimitsRefresh";
 import { fetchIndexComparison, fetchLivePremium, fetchSyncLimits, fetchTargets, type LivePremiumRow } from "../api/client";
 import type { IndexComparisonResult } from "../db/repositories";
@@ -39,9 +40,9 @@ export function IndexPage() {
   }, [indexTargets, selectedIndexTarget]);
 
   useEffect(() => {
-    document.title = "指数跟踪 · ETF Limit";
+    document.title = `指数跟踪 · ${SITE_NAME}`;
     return () => {
-      document.title = "ETF Limit";
+      document.title = SITE_NAME;
     };
   }, []);
 

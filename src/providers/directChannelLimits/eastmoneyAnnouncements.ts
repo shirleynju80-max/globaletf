@@ -43,7 +43,7 @@ export async function fetchEastMoneySecurityAnnouncements(
   for (let pageIndex = 1; pageIndex <= maxPages; pageIndex += 1) {
     const url = `${LIST_ENDPOINT}?sr=-1&page_size=${pageSize}&page_index=${pageIndex}&ann_type=Fund&client_source=web&stock_list=${fundCode}`;
     const response = await fetchImpl(url, {
-      headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://fund.eastmoney.com/" },
+      headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://fund.eastmoney.com/" },
       signal: AbortSignal.timeout(timeoutMs)
     });
     if (!response.ok) break;
@@ -63,7 +63,7 @@ export async function fetchEastMoneyAnnouncementContent(
 ): Promise<{ title: string; noticeDate: string; content: string } | null> {
   const url = `${DETAIL_ENDPOINT}?art_code=${artCode}&client_source=web`;
   const response = await fetchImpl(url, {
-    headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://fund.eastmoney.com/" },
+    headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://fund.eastmoney.com/" },
     signal: AbortSignal.timeout(timeoutMs)
   });
   if (!response.ok) return null;

@@ -36,7 +36,7 @@ async function safeFetchDisclosedNav(
     const response = await fetchWithTimeout(
       fetchImpl,
       `https://fundf10.eastmoney.com/F10DataApi.aspx?${params.toString()}`,
-      { headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://fundf10.eastmoney.com/" } },
+      { headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://fundf10.eastmoney.com/" } },
       timeoutMs
     );
     if (!response.ok) return null;

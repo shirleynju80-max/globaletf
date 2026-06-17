@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { SITE_NAME, SITE_TAGLINE } from "../lib/brand";
 import { navigateTo } from "../lib/navigation";
 import { SiteNav } from "../ui/SiteNav";
 
@@ -66,9 +67,9 @@ const PRODUCTS = [
 
 export function LandingPage() {
   useEffect(() => {
-    document.title = "ETF Limit — 跨境基金指数跟踪与股票持仓";
+    document.title = `${SITE_NAME} — 跨境基金指数跟踪与股票持仓`;
     return () => {
-      document.title = "ETF Limit";
+      document.title = SITE_NAME;
     };
   }, []);
 
@@ -160,7 +161,7 @@ export function LandingPage() {
         <section className="landing-section landing-section-alt">
           <div className="landing-highlight landing-highlight-single">
             <div>
-              <p className="landing-eyebrow">Why ETF Limit</p>
+              <p className="landing-eyebrow">Why {SITE_NAME}</p>
               <h2>公开、专注、数据可核对</h2>
               <p>
                 指数跟踪页聚焦折溢价与限购，股票持仓页聚焦季报披露权重；数据均来自公开行情与基金定期报告，并标注报告期与来源，便于自行核实。
@@ -198,7 +199,7 @@ export function LandingPage() {
       </main>
 
       <footer className="landing-footer">
-        <p>ETF Limit · 跨境基金数据工具</p>
+        <p>{SITE_NAME} · {SITE_TAGLINE}</p>
         <p className="landing-footer-muted">数据来自公开渠道，不构成投资建议</p>
       </footer>
     </div>

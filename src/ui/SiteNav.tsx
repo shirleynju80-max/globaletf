@@ -1,4 +1,5 @@
 import type { MouseEvent } from "react";
+import { SITE_NAME } from "../lib/brand";
 import { navigateTo } from "../lib/navigation";
 import type { SiteSection } from "../lib/navigation";
 
@@ -15,8 +16,8 @@ export function SiteNav({ active }: Props) {
   return (
     <header className="landing-nav">
       <a className="landing-brand" href="/" onClick={(event) => go("/", event)}>
-        <span className="landing-brand-mark">EL</span>
-        <span>ETF Limit</span>
+        <span className="landing-brand-mark">GE</span>
+        <span>{SITE_NAME}</span>
       </a>
       <nav className="landing-nav-links" aria-label="站点导航">
         <a href="/indices" className={active === "indices" ? "active" : ""} onClick={(event) => go("/indices", event)}>

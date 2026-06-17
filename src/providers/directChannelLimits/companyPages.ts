@@ -65,7 +65,7 @@ export async function fetchSouthernDirectLimits(
     const response = await fetchWithTimeout(fetchImpl, url, {
       method: "POST",
       headers: {
-        "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
+        "User-Agent": "Mozilla/5.0 globaletf/0.1",
         Referer: "https://www.nffund.com/",
         "Content-Type": "application/json"
       },
@@ -88,7 +88,7 @@ export async function fetchSouthernDirectLimits(
 
   try {
     const htmlResponse = await fetchWithTimeout(fetchImpl, "https://www.nffund.com/new/transaction-guide/product-status-and-limits.html", {
-      headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://www.nffund.com/" }
+      headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://www.nffund.com/" }
     }, timeoutMs);
     if (!htmlResponse.ok) return [];
     return matchCompanyRows(funds, parseSouthernProductStatusTable(await htmlResponse.text()), "nfjj", dataDate, syncRunId);
@@ -110,7 +110,7 @@ export async function fetchBoseraDirectLimits(
       const response = await fetchWithTimeout(
         fetchImpl,
         `https://www.bosera.com/fund/fundTradeLimit.do?fundCode=${fund.code}`,
-        { headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://www.bosera.com/" } },
+        { headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://www.bosera.com/" } },
         timeoutMs
       );
       if (!response.ok) continue;
@@ -141,7 +141,7 @@ export async function fetchHarvestDirectLimits(
     ]) {
       try {
         const response = await fetchWithTimeout(fetchImpl, url, {
-          headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://www.jsfund.cn/" }
+          headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://www.jsfund.cn/" }
         }, timeoutMs);
         if (!response.ok) continue;
         const html = await response.text();
@@ -172,7 +172,7 @@ export async function fetchHuataiPbDirectLimits(
         const response = await fetchWithTimeout(
           fetchImpl,
           `${host}/fund/tradeLimit?fundCode=${fund.code}`,
-          { headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: `${host}/` } },
+          { headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: `${host}/` } },
           timeoutMs
         );
         if (!response.ok) continue;
@@ -256,7 +256,7 @@ async function fetchSimpleTradeLimitPages(
     for (const buildUrl of urlBuilders) {
       try {
         const response = await fetchWithTimeout(fetchImpl, buildUrl(fund.code), {
-          headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1" }
+          headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1" }
         }, timeoutMs);
         if (!response.ok) continue;
         const html = await response.text();

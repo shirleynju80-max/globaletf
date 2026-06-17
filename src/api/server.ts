@@ -134,6 +134,6 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   const host = process.env.HOST ?? "127.0.0.1";
   const dbPath = process.env.DATABASE_PATH ?? "data/etflimit.sqlite";
   createApp(openDatabase(dbPath)).listen(port, host, () => {
-    console.log(`ETF Limit API listening on http://${host}:${port}`);
+    console.log(`globaletf API listening on http://${host}:${port}`);
   });
 }

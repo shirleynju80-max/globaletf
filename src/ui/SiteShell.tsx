@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { SITE_NAME, SITE_TAGLINE } from "../lib/brand";
 import { SiteNav } from "./SiteNav";
 import type { SiteSection } from "../lib/navigation";
 
@@ -24,7 +25,7 @@ export function SiteShell({ active, eyebrow, title, lead, children }: Props) {
         {children}
       </main>
       <footer className="landing-footer">
-        <p>ETF Limit · 跨境基金数据工具</p>
+        <p>{SITE_NAME} · {SITE_TAGLINE}</p>
         <p className="landing-footer-muted">数据来自公开渠道，不构成投资建议</p>
       </footer>
     </div>

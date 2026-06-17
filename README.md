@@ -1,4 +1,4 @@
-# ETF Limit
+# globaletf
 
 Public web tool for comparing mainland China funds that track overseas indices and hold popular overseas stocks.
 
@@ -12,6 +12,12 @@ Public web tool for comparing mainland China funds that track overseas indices a
 
 ```sh
 npm install
+npm run dev:all       # API + UI together (recommended)
+```
+
+Or run separately:
+
+```sh
 npm run api          # API → http://127.0.0.1:8787
 npm run dev          # UI  → http://127.0.0.1:5173
 ```

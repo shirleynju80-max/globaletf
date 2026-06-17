@@ -37,7 +37,7 @@ export async function fetchFundProfile(fetchImpl: typeof fetch, code: string, ti
       const response = await fetchWithTimeout(
         fetchImpl,
         `${PROFILE_ENDPOINT}_${code}.html`,
-        { headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://fundf10.eastmoney.com/" } },
+        { headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://fundf10.eastmoney.com/" } },
         timeoutMs
       );
       if (!response.ok) continue;

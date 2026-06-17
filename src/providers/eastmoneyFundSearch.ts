@@ -81,7 +81,7 @@ export function selectFundsForTargets(rows: FundSearchRow[], targets: TargetSele
 export async function fetchEastMoneyFundCodeRows(fetchImpl: typeof fetch = fetch): Promise<FundSearchRow[]> {
   const response = await fetchImpl(ENDPOINT, {
     headers: {
-      "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
+      "User-Agent": "Mozilla/5.0 globaletf/0.1",
       Referer: "https://fund.eastmoney.com/"
     }
   });
@@ -204,7 +204,7 @@ async function fetchSuggestionRowsForQuery(fetchImpl: typeof fetch, query: strin
   try {
     const response = await fetchImpl(`${SUGGEST_ENDPOINT}?${params.toString()}`, {
       headers: {
-        "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
+        "User-Agent": "Mozilla/5.0 globaletf/0.1",
         Referer: "https://fund.eastmoney.com/"
       }
     });
