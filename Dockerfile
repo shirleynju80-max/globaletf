@@ -20,7 +20,8 @@ RUN npm ci --omit=dev
 
 COPY --from=build /app/dist ./dist
 COPY src ./src
-COPY data ./data
+COPY scripts ./scripts
+RUN mkdir -p data logs
 
 ENV NODE_ENV=production
 ENV HOST=0.0.0.0

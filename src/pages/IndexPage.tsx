@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { INDEX_TARGETS } from "../domain/targets";
 import type { Target } from "../domain/types";
+import { INDEX_TARGETS_PENDING_UNTIL_FUNDS, indexTargetHasFunds, isIndexTargetSelectable } from "../domain/indexTargetAvailability";
 import { SITE_NAME } from "../lib/brand";
 import { LIMITS_INITIAL_DELAY_MS, LIMITS_REFRESH_INTERVAL_MS } from "../ui/liveLimitsRefresh";
 import { fetchIndexComparison, fetchLivePremium, fetchSyncLimits, fetchTargets, type LivePremiumRow } from "../api/client";
@@ -27,6 +28,7 @@ export function IndexPage() {
   const [liveAsOf, setLiveAsOf] = useState<string | null>(null);
   const [liveError, setLiveError] = useState<string | null>(null);
   const [limitsError, setLimitsError] = useState<string | null>(null);
+  const [fundAvailabilityByTarget, setFundAvailabilityByTarget] = useState<Record<string, boolean>>({});
   const liveInFlightRef = useRef(false);
   const limitsInFlightRef = useRef(false);
   const missingRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -38,6 +40,16 @@ export function IndexPage() {
   const selectedIndexTargetName = useMemo(() => {
     return indexTargets.find((target) => target.code === selectedIndexTarget)?.name ?? selectedIndexTarget;
   }, [indexTargets, selectedIndexTarget]);
+
+  const disabledIndexTargetCodes = useMemo(() => {
+    const disabled = new Set<string>();
+    for (const target of indexTargets) {
+      if (!isIndexTargetSelectable(target.code, fundAvailabilityByTarget)) {
+        disabled.add(target.code);
+      }
+    }
+    return disabled;
+  }, [fundAvailabilityByTarget, indexTargets]);
 
   useEffect(() => {
     document.title = `指数跟踪 · ${SITE_NAME}`;
@@ -56,6 +68,36 @@ export function IndexPage() {
       })
       .catch(() => setIndexTargets(INDEX_TARGETS));
   }, []);
+
+  useEffect(() => {
+    const pendingTargets = [...INDEX_TARGETS_PENDING_UNTIL_FUNDS];
+    if (pendingTargets.length === 0) return;
+
+    let isCurrent = true;
+    Promise.all(
+      pendingTargets.map(async (targetCode) => {
+        try {
+          const comparison = await fetchIndexComparison(targetCode);
+          return [targetCode, indexTargetHasFunds(comparison)] as const;
+        } catch {
+          return [targetCode, false] as const;
+        }
+      })
+    ).then((entries) => {
+      if (!isCurrent) return;
+      setFundAvailabilityByTarget(Object.fromEntries(entries));
+    });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isIndexTargetSelectable(selectedIndexTarget, fundAvailabilityByTarget)) {
+      setSelectedIndexTarget("NASDAQ_100");
+    }
+  }, [fundAvailabilityByTarget, selectedIndexTarget]);
 
   useEffect(() => {
     let isCurrent = true;
@@ -163,7 +205,7 @@ export function IndexPage() {
         missingRetryTimerRef.current = null;
       }
     };
-  }, [data, refreshLivePremium]);
+  }, [selectedIndexTarget, data?.onExchange.length, refreshLivePremium]);
 
   return (
     <SiteShell
@@ -172,7 +214,12 @@ export function IndexPage() {
       title="指数跟踪"
       lead="对比同一境外指数下的场内 ETF/LOF 折溢价、场外申购限额与费率，支持纳斯达克100、标普500、日经225、恒生科技等标的。"
     >
-      <TargetSelector targets={indexTargets} selectedTargetCode={selectedIndexTarget} onSelectTarget={setSelectedIndexTarget} />
+      <TargetSelector
+        targets={indexTargets}
+        selectedTargetCode={selectedIndexTarget}
+        disabledTargetCodes={disabledIndexTargetCodes}
+        onSelectTarget={setSelectedIndexTarget}
+      />
       {data ? (
         <IndexComparison
           targetName={selectedIndexTargetName}

@@ -40,7 +40,7 @@ export function StockConcentration({ selectedStock, rows, expandPeers, onSelectS
       <div className="section-heading">
         <div>
           <p className="eyebrow">Holdings concentration</p>
-          <h2>热门股票持仓浓度</h2>
+          <h2>{formatSelectedStockLabel(selectedStock)} 持仓排名</h2>
         </div>
         <span className="source-pill">定期报告</span>
       </div>

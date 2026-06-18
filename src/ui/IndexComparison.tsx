@@ -82,7 +82,11 @@ export function IndexComparison({ targetName, data, livePremiums, liveAsOf, live
           <h2>{targetName} 同标的产品比较</h2>
         </div>
         <div className="live-controls">
-          {liveAsOf ? <span className="live-asof">实时数据更新于 {formatClock(liveAsOf)}</span> : null}
+          {formatLiveStatus(liveAsOf, liveError, data.onExchange.length > 0) ? (
+            <span className={liveAsOf ? "live-asof" : "live-asof live-asof-pending"}>
+              {formatLiveStatus(liveAsOf, liveError, data.onExchange.length > 0)}
+            </span>
+          ) : null}
         </div>
       </div>
       {liveError ? <p className="note live-error">实时折溢价更新失败：{liveError}</p> : null}
@@ -113,8 +117,8 @@ export function IndexComparison({ targetName, data, livePremiums, liveAsOf, live
                   <tr key={row.code}>
                     <td className="mono">{row.code}</td>
                     <td className="col-name">{row.name}</td>
-                    <td>{live?.price ?? row.closePrice}</td>
-                    <td className="premium-primary">{formatPrimaryPremium(row, live)}</td>
+                    <td>{formatLivePrice(live, liveAsOf, liveError)}</td>
+                    <td className="premium-primary">{formatPrimaryPremium(live, liveAsOf, liveError)}</td>
                     <td className="premium-secondary">{formatPremiumDiscount(row)}</td>
                     <td>{formatCurrency(row.turnover)}</td>
                   </tr>
@@ -388,19 +392,49 @@ function formatPremiumDiscount(row: { closingPremiumDiscountRate?: number | null
   return formatPercent(row.closingPremiumDiscountRate);
 }
 
-function formatPrimaryPremium(
-  row: { iopvPremiumDiscountRate?: number | null },
-  live?: LivePremium
+function isLivePending(liveAsOf: string | null | undefined, liveError: string | null | undefined): boolean {
+  return !liveAsOf && !liveError;
+}
+
+function formatQuotePrice(value: number): string {
+  return value.toFixed(3);
+}
+
+function formatLivePrice(
+  live: LivePremium | undefined,
+  liveAsOf: string | null | undefined,
+  liveError: string | null | undefined
 ): string {
-  const rate = live?.iopvPremiumDiscountRate ?? row.iopvPremiumDiscountRate;
-  if (rate == null) return "估值缺失";
-  return formatPercent(rate);
+  if (live?.price != null) return formatQuotePrice(live.price);
+  if (isLivePending(liveAsOf, liveError)) return "—";
+  return "—";
+}
+
+function formatPrimaryPremium(
+  live: LivePremium | undefined,
+  liveAsOf: string | null | undefined,
+  liveError: string | null | undefined
+): string {
+  if (live?.iopvPremiumDiscountRate != null) return formatPercent(live.iopvPremiumDiscountRate);
+  if (isLivePending(liveAsOf, liveError)) return "—";
+  return "估值缺失";
 }
 
 function formatClock(iso: string): string {
   const date = new Date(iso);
   if (Number.isNaN(date.getTime())) return iso;
   return date.toLocaleTimeString("zh-CN", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
+function formatLiveStatus(
+  liveAsOf: string | null | undefined,
+  liveError: string | null | undefined,
+  hasOnExchange: boolean
+): string | null {
+  if (!hasOnExchange) return null;
+  if (liveAsOf) return `实时数据更新于 ${formatClock(liveAsOf)}`;
+  if (liveError) return "实时数据暂不可用";
+  return "实时数据更新中...";
 }
 
 function formatStatus(status?: string): string {

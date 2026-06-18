@@ -4,6 +4,8 @@ import { isDelistedOnExchange } from "../domain/delistedOnExchange";
 import { matchesStockTarget } from "../domain/holdings";
 import { dedupeStockConcentrationRows } from "../domain/stockConcentrationDedup";
 import { buildStockFundIndexRows, lookupStockKey, stockIndexLookupKeys } from "../domain/stockHoldingIndex";
+import { buildLandingStats, countActiveTrackingIndexTargets } from "../domain/landingStats";
+import { INDEX_TARGETS_PENDING_UNTIL_FUNDS, indexTargetHasFunds } from "../domain/indexTargetAvailability";
 import { STOCK_TARGETS } from "../domain/targets";
 import type { FundSearchRow } from "../providers/eastmoneyFundSearch";
 import { reconcilePurchaseLimit } from "../domain/purchaseLimitReconciliation";
@@ -328,6 +330,41 @@ export function querySyncStatus(db: Database.Database): SyncStatusMap {
   `).all() as SyncStatusRow[];
 
   return Object.fromEntries(rows.map((row) => [row.area, row])) as SyncStatusMap;
+}
+
+export interface LandingStats {
+  trackingIndexCount: number;
+  stockIndexCount: number;
+  trackingIndexLabel: string;
+  stockIndexLabel: string;
+}
+
+export function queryStockIndexStockCount(db: Database.Database): number {
+  const indexExists = db.prepare(`
+    SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'stock_fund_index'
+  `).get();
+  if (!indexExists) return 0;
+  const row = db.prepare(`
+    SELECT COUNT(DISTINCT stock_key) AS count
+    FROM stock_fund_index
+  `).get() as { count: number };
+  return row.count;
+}
+
+export function queryLandingStats(db: Database.Database): LandingStats {
+  const pendingIndexAvailability = Object.fromEntries(
+    [...INDEX_TARGETS_PENDING_UNTIL_FUNDS].map((targetCode) => [
+      targetCode,
+      indexTargetHasFunds(queryIndexComparison(db, targetCode))
+    ])
+  );
+  const stockIndexCount = queryStockIndexStockCount(db);
+  const labels = buildLandingStats({ stockIndexCount, pendingIndexAvailability });
+  return {
+    trackingIndexCount: countActiveTrackingIndexTargets(pendingIndexAvailability),
+    stockIndexCount,
+    ...labels
+  };
 }
 
 function uniqueFeeSnapshotKeys(fees: FeeTier[]): Array<{ fundCode: string; source: string; dataDate: string }> {

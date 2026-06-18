@@ -776,6 +776,19 @@
   color: var(--lp-primary-deep);
 }
 
+.site-page .stock-search button {
+  border-color: var(--lp-primary);
+  background: var(--lp-primary);
+}
+
+.site-page .stock-search button:hover {
+  background: var(--lp-primary-deep);
+}
+
+.site-page .dedupe-toggle input {
+  accent-color: var(--lp-primary);
+}
+
 .site-page .source-pill {
   border-color: var(--lp-border);
   color: var(--lp-primary);
@@ -810,7 +823,9 @@
   .landing-product-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
 
+@media (min-width: 960px) {
   .landing-highlight-single {
     grid-template-columns: 1.2fr 0.8fr;
     align-items: center;

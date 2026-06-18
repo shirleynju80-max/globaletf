@@ -51,6 +51,7 @@ Limits-only agent: `scripts/com.etflimit.limits-sync.plist.example` + `scripts/l
 While the index comparison page is open:
 
 - `GET /api/live-premium/:targetCode` every **90s** (real-time premium)
+- Status line: pending → timestamp (or unavailable on error)
 - `POST /api/sync-limits/:targetCode` after **1 min**, then every **30 min**
 
 These complement but do not replace scheduled `sync:daily` on the server.

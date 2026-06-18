@@ -76,6 +76,69 @@ describe("IndexComparison", () => {
     expect(codes).toEqual(["159659", "513100"]);
   });
 
+  it("shows live premium and price only after the live refresh completes", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [{
+            code: "513100",
+            name: "纳指ETF国泰",
+            closePrice: 2.28,
+            closingPremiumDiscountRate: 0.0986,
+            iopvPremiumDiscountRate: 0.1195,
+            turnover: 744435531,
+            tradeDate: "2026-06-16",
+            source: "eastmoney-on-exchange-quote"
+          }],
+          offExchange: []
+        }}
+        liveAsOf="2026-06-18T04:15:59.089Z"
+        livePremiums={{
+          "513100": {
+            price: 2.246,
+            priceTime: "2026-06-18T04:15:52.000Z",
+            iopv: 2.0165,
+            iopvTime: "2026-06-18 12:15",
+            iopvPremiumDiscountRate: 0.1138,
+            aligned: true,
+            iopvSource: "current"
+          }
+        }}
+      />
+    );
+
+    expect(screen.getByText("2.246")).toBeInTheDocument();
+    expect(screen.getByText("11.38%")).toBeInTheDocument();
+    expect(screen.queryByText("2.28")).not.toBeInTheDocument();
+    expect(screen.queryByText("11.95%")).not.toBeInTheDocument();
+  });
+
+  it("does not show snapshot close price or IOPV premium in live columns while pending", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [{
+            code: "513100",
+            name: "纳指ETF国泰",
+            closePrice: 2.28,
+            iopvPremiumDiscountRate: 0.1195,
+            turnover: 744435531,
+            tradeDate: "2026-06-16",
+            source: "eastmoney-on-exchange-quote"
+          }],
+          offExchange: []
+        }}
+      />
+    );
+
+    expect(screen.getByText("实时数据更新中...")).toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("2.28")).not.toBeInTheDocument();
+    expect(screen.queryByText("11.95%")).not.toBeInTheDocument();
+  });
+
   it("shows the IOPV-based premium as the primary gauge with its estimate time", () => {
     render(
       <IndexComparison
@@ -97,11 +160,37 @@ describe("IndexComparison", () => {
           }],
           offExchange: []
         }}
+        liveAsOf="2026-06-15T04:13:00.000Z"
+        livePremiums={{
+          "159632": {
+            price: 2.458,
+            priceTime: "2026-06-13T06:30:00.000Z",
+            iopv: 2.2866,
+            iopvTime: "2026-06-13 04:00",
+            iopvPremiumDiscountRate: 0.0749,
+            aligned: true,
+            iopvSource: "current"
+          }
+        }}
       />
     );
 
     expect(screen.getByRole("button", { name: /折溢价（实时）/ })).toBeInTheDocument();
     expect(screen.getByText("7.49%")).toBeInTheDocument();
+  });
+
+  it("shows pending live status before the first refresh completes", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [{ code: "513100", name: "纳指ETF", iopvPremiumDiscountRate: 0.01, turnover: 100, tradeDate: "2026-06-10", source: "eastmoney" }],
+          offExchange: []
+        }}
+      />
+    );
+
+    expect(screen.getByText("实时数据更新中...")).toBeInTheDocument();
   });
 
   it("overlays live premium when background refresh returns newer values", () => {
@@ -131,6 +220,7 @@ describe("IndexComparison", () => {
           onExchange: [{ code: "513100", name: "纳指ETF", closePrice: 1.23, closingPremiumDiscountRate: 0.012, iopvPremiumDiscountRate: null, turnover: 120000000, tradeDate: "2026-06-08", source: "eastmoney" }],
           offExchange: []
         }}
+        liveAsOf="2026-06-15T04:13:00.000Z"
       />
     );
 

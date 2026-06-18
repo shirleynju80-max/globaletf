@@ -1,13 +1,15 @@
 import express from "express";
+import compression from "compression";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 import { openDatabase } from "../db/database";
-import { queryIndexComparison, queryDiscoveryHealthForTarget, queryOnExchangeFundCodes, queryStockConcentration, querySyncStatus } from "../db/repositories";
+import { queryIndexComparison, queryDiscoveryHealthForTarget, queryLandingStats, queryOnExchangeFundCodes, queryStockConcentration, querySyncStatus } from "../db/repositories";
 import { TARGETS } from "../domain/targets";
 import { fetchLivePremiums } from "../providers/eastmoneyLiveQuotes";
 import { queryPriorIopvSnapshots } from "../sync/iopvQuoteEnrichment";
 import { runDailySync } from "../sync/syncRunner";
+import { cachePublic, noStore } from "./httpCache";
 
 function queryLatestQuoteTradeDates(db: Database.Database, fundCodes: string[]): Map<string, string> {
   if (fundCodes.length === 0) return new Map();
@@ -34,6 +36,8 @@ export interface CreateAppOptions {
 export function createApp(db: Database.Database, options: CreateAppOptions = {}) {
   const fetchImpl = options.fetchImpl ?? fetch;
   const app = express();
+  app.use(compression());
+  app.disable("x-powered-by");
 
   app.use((_req, res, next) => {
     res.setHeader("Access-Control-Allow-Origin", "*");
@@ -46,35 +50,40 @@ export function createApp(db: Database.Database, options: CreateAppOptions = {})
     next();
   });
 
-  app.get("/api/targets", (_req, res) => {
-    res.json(TARGETS);
-  });
-
-  app.get("/api/health", (_req, res) => {
+  app.get("/api/health", noStore(), (_req, res) => {
     res.json({ ok: true });
   });
 
-  app.get("/api/discovery-health/:targetCode", (req, res) => {
-    res.json(queryDiscoveryHealthForTarget(db, req.params.targetCode));
+  app.get("/api/targets", cachePublic(3600), (_req, res) => {
+    res.json(TARGETS);
   });
 
-  app.get("/api/index-comparison/:targetCode", (req, res) => {
-    res.json(queryIndexComparison(db, req.params.targetCode));
+  app.get("/api/discovery-health/:targetCode", cachePublic(300, 600), (req, res) => {
+    res.json(queryDiscoveryHealthForTarget(db, routeParam(req.params.targetCode)));
   });
 
-  app.get("/api/stock-concentration/:stockCode", (req, res) => {
+  app.get("/api/index-comparison/:targetCode", cachePublic(60, 120), (req, res) => {
+    res.json(queryIndexComparison(db, routeParam(req.params.targetCode)));
+  });
+
+  app.get("/api/stock-concentration/:stockCode", cachePublic(300, 600), (req, res) => {
     const dedupe = req.query.expandPeers !== "1";
-    res.json(queryStockConcentration(db, req.params.stockCode, { dedupe }));
+    res.json(queryStockConcentration(db, routeParam(req.params.stockCode), { dedupe }));
   });
 
-  app.get("/api/status", (_req, res) => {
+  app.get("/api/status", cachePublic(60), (_req, res) => {
     res.json(querySyncStatus(db));
+  });
+
+  app.get("/api/landing-stats", cachePublic(300, 600), (_req, res) => {
+    res.json(queryLandingStats(db));
   });
 
   // On-demand live premium: fetches current secondary-market price + real-time IOPV
   // for the target's on-exchange funds and computes the live premium/discount.
-  app.get("/api/live-premium/:targetCode", async (req, res) => {
-    const funds = queryOnExchangeFundCodes(db, req.params.targetCode);
+  app.get("/api/live-premium/:targetCode", noStore(), async (req, res) => {
+    const targetCode = routeParam(req.params.targetCode);
+    const funds = queryOnExchangeFundCodes(db, targetCode);
     const codeFilter = parseFundCodeFilter(req.query.codes);
     const selectedFunds = codeFilter
       ? funds.filter((fund) => codeFilter.has(fund.code))
@@ -99,12 +108,13 @@ export function createApp(db: Database.Database, options: CreateAppOptions = {})
   });
 
   // Re-scrape off-exchange purchase limits (F10 + fund-company pages/announcements) and persist.
-  app.post("/api/sync-limits/:targetCode", async (req, res) => {
+  app.post("/api/sync-limits/:targetCode", noStore(), async (req, res) => {
+    const targetCode = routeParam(req.params.targetCode);
     try {
       await runDailySync(db, { useLiveProviders: true, areas: ["offExchange"] });
       res.json({
         asOf: new Date().toISOString(),
-        offExchange: queryIndexComparison(db, req.params.targetCode).offExchange,
+        offExchange: queryIndexComparison(db, targetCode).offExchange,
         syncStatus: querySyncStatus(db)
       });
     } catch (error) {
@@ -121,6 +131,10 @@ export function createApp(db: Database.Database, options: CreateAppOptions = {})
   }
 
   return app;
+}
+
+function routeParam(value: string | string[]): string {
+  return Array.isArray(value) ? value[0] : value;
 }
 
 function parseFundCodeFilter(value: unknown): Set<string> | null {

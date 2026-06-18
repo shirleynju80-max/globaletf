@@ -2,6 +2,7 @@ import type Database from "better-sqlite3";
 import { queryIndexComparison, queryStockConcentration, querySyncStatus, queryDiscoveryCoverageGaps, queryDiscoveryManifestOrphans, queryDiscoveryProfileGaps, queryFundDiscoveryManifest } from "../db/repositories";
 import { CATALOG_FUNDS, CATALOG_DIRECT_SHARE_FUNDS } from "../domain/fundCatalog";
 import { INDEX_TARGETS, INDEX_TARGET_FUND_SEEDS } from "../domain/targets";
+import { INDEX_TARGETS_PENDING_UNTIL_FUNDS, indexTargetHasFunds } from "../domain/indexTargetAvailability";
 import { STOCK_SCAN_FUNDS } from "../domain/stockScanUniverse";
 import { countStockIndexFunds } from "../sync/stockHoldingIndexSync";
 import { queryFundTrackingProfileMismatches } from "../sync/trackingProfileSync";
@@ -52,7 +53,7 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
     },
     ...comparisons.map(({ target, comparison }) => ({
       key: `indexComparison.${target.code}`,
-      ok: comparison.onExchange.length > 0 && comparison.offExchange.length > 0,
+      ok: isActiveIndexTargetComparisonReady(target.code, comparison),
       message: `${target.code} on-exchange=${comparison.onExchange.length}, off-exchange=${comparison.offExchange.length}`
     })),
     ...comparisons.flatMap(({ target, comparison }) => {
@@ -182,7 +183,26 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
   };
 }
 
+function isActiveIndexTargetComparisonReady(
+  targetCode: string,
+  comparison: { onExchange: unknown[]; offExchange: unknown[] }
+): boolean {
+  if (INDEX_TARGETS_PENDING_UNTIL_FUNDS.has(targetCode) && !indexTargetHasFunds(comparison)) {
+    return true;
+  }
+  return comparison.onExchange.length > 0 && comparison.offExchange.length > 0;
+}
+
 function checkDiscoveryManifestForTarget(db: Database.Database, targetCode: string): AcceptanceCheck {
+  const comparison = queryIndexComparison(db, targetCode);
+  if (INDEX_TARGETS_PENDING_UNTIL_FUNDS.has(targetCode) && !indexTargetHasFunds(comparison)) {
+    return {
+      key: `discoveryManifest.${targetCode}`,
+      ok: true,
+      message: `${targetCode} pending until tracked funds exist`
+    };
+  }
+
   const manifest = queryFundDiscoveryManifest(db).filter((row) => row.trackingTargetCode === targetCode);
   const onExchangeManifest = manifest.filter((row) => row.venue === "on_exchange" && (row.shareClass === "ETF" || row.shareClass === "LOF"));
   const automatedOnExchange = onExchangeManifest.filter((row) => row.discoverySource !== "catalog-seed");
@@ -206,6 +226,15 @@ function checkDiscoveryManifestForTarget(db: Database.Database, targetCode: stri
 }
 
 function checkDiscoveryProfileGapsForTarget(db: Database.Database, targetCode: string): AcceptanceCheck {
+  const comparison = queryIndexComparison(db, targetCode);
+  if (INDEX_TARGETS_PENDING_UNTIL_FUNDS.has(targetCode) && !indexTargetHasFunds(comparison)) {
+    return {
+      key: `discoveryProfileGaps.${targetCode}`,
+      ok: true,
+      message: `${targetCode} pending until tracked funds exist`
+    };
+  }
+
   const gaps = queryDiscoveryProfileGaps(db, targetCode);
   return {
     key: `discoveryProfileGaps.${targetCode}`,

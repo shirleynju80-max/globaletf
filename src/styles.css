@@ -93,6 +93,7 @@ body {
   align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .section-heading h2,
@@ -195,6 +196,22 @@ body {
 .segmented-control button.active {
   border-color: #24716b;
   background: #24716b;
+  color: #ffffff;
+}
+
+.segmented-control button:disabled,
+.segmented-control button.disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  background: #f3f6f6;
+  color: #7a8b90;
+  border-color: #d5e0df;
+}
+
+.segmented-control button:disabled.active,
+.segmented-control button.disabled.active {
+  background: #9ab5b2;
+  border-color: #9ab5b2;
   color: #ffffff;
 }
 
@@ -379,6 +396,11 @@ td {
 .live-asof {
   color: #5f6f7a;
   font-size: 0.85em;
+  white-space: nowrap;
+}
+
+.live-asof-pending {
+  font-style: italic;
 }
 
 .live-error {

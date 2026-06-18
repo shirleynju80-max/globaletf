@@ -18,9 +18,13 @@ describe("IndexPage", () => {
     vi.mocked(fetchTargets).mockResolvedValue([
       { code: "NASDAQ_100", name: "纳斯达克100", type: "index", aliases: [], region: "US", displayOrder: 1 },
       { code: "SP_500", name: "标普500", type: "index", aliases: [], region: "US", displayOrder: 2 },
+      { code: "KOSPI", name: "韩国综合指数", type: "index", aliases: [], region: "KR", displayOrder: 5 },
       { code: "NVDA", name: "英伟达", type: "stock", aliases: [], region: "US", displayOrder: 101 }
     ]);
-    vi.mocked(fetchIndexComparison).mockResolvedValue(emptyComparison);
+    vi.mocked(fetchIndexComparison).mockImplementation(async (targetCode) => {
+      if (targetCode === "KOSPI") return emptyComparison;
+      return emptyComparison;
+    });
     vi.mocked(fetchLivePremium).mockResolvedValue({ asOf: "2026-06-16T08:00:00.000Z", rows: [] });
   });
 
@@ -74,6 +78,34 @@ describe("IndexPage", () => {
     render(<IndexPage />);
 
     expect(await screen.findByText("1,000 元/日")).toBeInTheDocument();
+  });
+
+  it("disables KOSPI until tracked funds exist", async () => {
+    render(<IndexPage />);
+
+    const kospiButton = await screen.findByRole("button", { name: "韩国综合指数" });
+    await waitFor(() => {
+      expect(kospiButton).toBeDisabled();
+    });
+  });
+
+  it("enables KOSPI after tracked funds are discovered", async () => {
+    vi.mocked(fetchIndexComparison).mockImplementation(async (targetCode) => {
+      if (targetCode === "KOSPI") {
+        return {
+          onExchange: [{ code: "513900", name: "韩国综合ETF", venue: "on_exchange", shareClass: "ETF", closePrice: 1, closingPremiumDiscountRate: 0, turnover: 1, tradeDate: "2026-06-10", source: "test" }],
+          offExchange: []
+        };
+      }
+      return emptyComparison;
+    });
+
+    render(<IndexPage />);
+
+    const kospiButton = await screen.findByRole("button", { name: "韩国综合指数" });
+    await waitFor(() => {
+      expect(kospiButton).not.toBeDisabled();
+    });
   });
 });
 

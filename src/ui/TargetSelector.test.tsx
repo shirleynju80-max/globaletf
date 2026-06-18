@@ -24,4 +24,22 @@ describe("TargetSelector", () => {
 
     expect(onSelectTarget).toHaveBeenCalledWith("SP_500");
   });
+
+  it("disables targets that are not yet available", () => {
+    const onSelectTarget = vi.fn();
+
+    render(
+      <TargetSelector
+        targets={[...targets, { code: "KOSPI", name: "韩国综合指数", type: "index", aliases: [], region: "KR", displayOrder: 5 }]}
+        selectedTargetCode="NASDAQ_100"
+        disabledTargetCodes={new Set(["KOSPI"])}
+        onSelectTarget={onSelectTarget}
+      />
+    );
+
+    const kospiButton = screen.getByRole("button", { name: "韩国综合指数" });
+    expect(kospiButton).toBeDisabled();
+    fireEvent.click(kospiButton);
+    expect(onSelectTarget).not.toHaveBeenCalled();
+  });
 });

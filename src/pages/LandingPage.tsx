@@ -1,7 +1,18 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { fetchIndexComparison, fetchLandingStats, fetchLivePremium, fetchStockConcentration } from "../api/client";
 import { SITE_NAME, SITE_TAGLINE } from "../lib/brand";
 import { navigateTo } from "../lib/navigation";
 import { SiteNav } from "../ui/SiteNav";
+import {
+  buildIndexPreviewRows,
+  buildStockPreviewRows,
+  FALLBACK_INDEX_PREVIEW_ROWS,
+  FALLBACK_STOCK_PREVIEW_ROWS,
+  LANDING_INDEX_PREVIEW_TARGET,
+  LANDING_STOCK_PREVIEW_CODE,
+  type LandingIndexPreviewRow,
+  type LandingStockPreviewRow
+} from "./landingPreview";
 
 const PRODUCTS = [
   {
@@ -12,18 +23,13 @@ const PRODUCTS = [
     description: "覆盖纳斯达克100、标普500、日经225、恒生科技等主流指数。场内实时跟踪折溢价、场外展示申购限额、费率、渠道。",
     cta: "进入指数跟踪",
     previewTableClass: "landing-preview-table--indices",
-    previewTitle: "NASDAQ_100 · 场内 / 场外",
+    previewTitle: "NASDAQ_100 · 场内折溢价",
     previewColumns: [
       { key: "code", header: "代码", className: "col-code mono" },
       { key: "name", header: "名称", className: "col-name" },
       { key: "premium", header: "折溢价", className: "col-premium", positive: true },
       { key: "closing", header: "昨收", className: "col-closing" },
-      { key: "tail", header: "额/限额", className: "col-tail" }
-    ],
-    previewRows: [
-      { code: "513100", name: "纳指ETF", premium: "+0.71%", closing: "+1.2%", tail: "12.0 亿" },
-      { code: "000834", name: "纳指100联接A", premium: "-", closing: "-", tail: "1,000 元/日" },
-      { code: "159659", name: "纳指100ETF", premium: "+0.45%", closing: "+0.9%", tail: "3.2 亿" }
+      { key: "tail", header: "成交额", className: "col-tail" }
     ],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
@@ -48,11 +54,6 @@ const PRODUCTS = [
       { key: "kind", header: "类型", className: "col-kind" },
       { key: "period", header: "报告期", className: "col-period" }
     ],
-    previewRows: [
-      { code: "161128", name: "易方达标普信息科技", navPercent: "20.16%", kind: "主动/QDII", period: "2026Q1" },
-      { code: "539002", name: "建信新兴市场混合", navPercent: "10.14%", kind: "主动/QDII", period: "2026Q1" },
-      { code: "513100", name: "纳指ETF", navPercent: "9.20%", kind: "纳指100", period: "2026Q1" }
-    ],
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
         <path d="M4 19V5" strokeLinecap="round" />
@@ -66,12 +67,56 @@ const PRODUCTS = [
 ] as const;
 
 export function LandingPage() {
+  const [indexPreviewRows, setIndexPreviewRows] = useState<LandingIndexPreviewRow[]>(FALLBACK_INDEX_PREVIEW_ROWS);
+  const [stockPreviewRows, setStockPreviewRows] = useState<LandingStockPreviewRow[]>(FALLBACK_STOCK_PREVIEW_ROWS);
+  const [landingStats, setLandingStats] = useState({
+    trackingIndexLabel: "4+",
+    stockIndexLabel: "600+"
+  });
+
   useEffect(() => {
     document.title = `${SITE_NAME} — 跨境基金指数跟踪与股票持仓`;
     return () => {
       document.title = SITE_NAME;
     };
   }, []);
+
+  useEffect(() => {
+    let isCurrent = true;
+
+    Promise.all([
+      fetchIndexComparison(LANDING_INDEX_PREVIEW_TARGET),
+      fetchLivePremium(LANDING_INDEX_PREVIEW_TARGET),
+      fetchStockConcentration(LANDING_STOCK_PREVIEW_CODE, { expandPeers: false }),
+      fetchLandingStats()
+    ])
+      .then(([comparison, livePremium, stockConcentration, stats]) => {
+        if (!isCurrent) return;
+        const livePremiumMap = Object.fromEntries(
+          (livePremium.rows ?? []).map((row) => [row.fundCode, row])
+        );
+        const nextIndexRows = buildIndexPreviewRows(comparison.onExchange ?? [], livePremiumMap);
+        if (nextIndexRows.length > 0) setIndexPreviewRows(nextIndexRows);
+        const nextStockRows = buildStockPreviewRows(stockConcentration.rows ?? []);
+        if (nextStockRows.length > 0) setStockPreviewRows(nextStockRows);
+        setLandingStats({
+          trackingIndexLabel: stats.trackingIndexLabel,
+          stockIndexLabel: stats.stockIndexLabel
+        });
+      })
+      .catch(() => {
+        // Keep static fallbacks when API is unavailable.
+      });
+
+    return () => {
+      isCurrent = false;
+    };
+  }, []);
+
+  const previewRowsByProduct = {
+    indices: indexPreviewRows,
+    stocks: stockPreviewRows
+  } as const;
 
   return (
     <div className="landing">
@@ -134,7 +179,7 @@ export function LandingPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {product.previewRows.map((row) => (
+                      {previewRowsByProduct[product.id].map((row) => (
                         <tr key={row.code}>
                           {product.previewColumns.map((column) => {
                             const value = row[column.key as keyof typeof row];
@@ -164,21 +209,21 @@ export function LandingPage() {
               <p className="landing-eyebrow">Why {SITE_NAME}</p>
               <h2>公开、专注、数据可核对</h2>
               <p>
-                指数跟踪页聚焦折溢价与限购，股票持仓页聚焦季报披露权重；数据均来自公开行情与基金定期报告，并标注报告期与来源，便于自行核实。
+                指数跟踪页聚焦折溢价与限购，股票持仓页聚焦季报披露权重；数据均来自公开行情与基金定期报告。
               </p>
             </div>
             <dl className="landing-kpis landing-kpis-inline">
               <div>
-                <dt>指数标的</dt>
-                <dd>4+</dd>
+                <dt>跟踪指数</dt>
+                <dd>{landingStats.trackingIndexLabel}</dd>
               </div>
               <div>
-                <dt>折溢价刷新</dt>
-                <dd>90s</dd>
+                <dt>股票</dt>
+                <dd>{landingStats.stockIndexLabel}</dd>
               </div>
               <div>
-                <dt>持仓发现</dt>
-                <dd>全量 QDII</dd>
+                <dt>更新时效</dt>
+                <dd>高</dd>
               </div>
             </dl>
           </div>

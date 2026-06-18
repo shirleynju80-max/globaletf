@@ -1,7 +1,26 @@
 # Production deployment (option B)
 
-Split hosting: **static web** on `www.yourdomain.com`, **API** on `api.yourdomain.com`.  
+Split hosting: **static web** on Cloudflare Pages, **API** on Fly.io (Hong Kong).  
 Same layout works for a future WeChat mini-program (it only needs the API origin).
+
+## Quick launch (no custom domain)
+
+```sh
+# 1. API (Hong Kong)
+bash scripts/deploy-api.sh
+fly ssh console -a globaletf-api -C "npm run sync:daily"
+
+# 2. Web — Cloudflare Dashboard → Pages → Create project → Connect Git
+#    Build: npm ci && npm run build
+#    Output: dist
+#    Env:   VITE_API_BASE=https://globaletf-api.fly.dev
+
+# 3. Verify
+curl https://globaletf-api.fly.dev/api/health
+# Open https://<your-project>.pages.dev/indices
+```
+
+Or use GitHub Actions [`.github/workflows/deploy-pages.yml`](../.github/workflows/deploy-pages.yml) after setting `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`, and `VITE_API_BASE`.
 
 ```
                     ┌─────────────────────────┐
@@ -30,8 +49,8 @@ You can still ship option B with free subdomains:
 
 | Piece | Default URL | Build / config |
 |-------|-------------|----------------|
-| API | `https://<app-name>.fly.dev` | `fly deploy` — no `fly certs add` needed |
-| Web | `https://<project>.pages.dev` | Set `VITE_API_BASE=https://<app-name>.fly.dev` |
+| API | `https://globaletf-api.fly.dev` | `bash scripts/deploy-api.sh` |
+| Web | `https://globaletf.pages.dev` | `VITE_API_BASE=https://globaletf-api.fly.dev` |
 
 Add a custom domain later without changing the architecture. Mainland WeChat mini-program and ICP 备案 still need your own domain when you get there.
 
@@ -42,14 +61,12 @@ Add a custom domain later without changing the architecture. Mainland WeChat min
 ### First-time setup
 
 ```sh
-# Install flyctl: https://fly.io/docs/hands-on/install-flyctl/
 fly auth login
-fly apps create etflimit-api   # or edit fly.toml `app` name
-fly volumes create etflimit_data --region hkg --size 1
-fly deploy
+bash scripts/deploy-api.sh
 ```
 
-`fly.toml` uses `Dockerfile.api` (API only, no static files). SQLite lives on the mounted volume at `/app/data/etflimit.sqlite`.
+`fly.toml` app name: `globaletf-api`, region: `hkg`, volume: `globaletf_data`.  
+`Dockerfile.api` runs API only. SQLite on `/app/data/etflimit.sqlite`.
 
 ### Custom domain
 
@@ -57,16 +74,13 @@ fly deploy
 fly certs add api.yourdomain.com
 ```
 
-Add the DNS record Fly prints (usually CNAME `api` → `etflimit-api.fly.dev`).
+Add the DNS record Fly prints (usually CNAME `api` → `globaletf-api.fly.dev`).
 
 ### Seed and refresh data (on the API machine)
 
 ```sh
-fly ssh console
-cd /app
-npm run sync:daily
-npm run acceptance
-exit
+fly ssh console -a globaletf-api -C "npm run sync:daily"
+fly ssh console -a globaletf-api -C "npm run acceptance"
 ```
 
 ### Scheduled sync (Fly cron or external)
@@ -156,3 +170,25 @@ CORS is already `Access-Control-Allow-Origin: *` on the API.
 ## Option A (single container, not recommended for mini-program)
 
 For local demos or a quick single-box deploy, see the **Monolith** section in the root [README](../README.md#monolith-option-a). Production with a future mini-program should stay on **option B**.
+
+---
+
+## Mainland China access (已做 / 现实预期)
+
+**已内置的优化：**
+
+| 层 | 措施 |
+|----|------|
+| API | Fly **香港 (hkg)** 机房，比美欧更近 |
+| API | **gzip** 压缩 JSON |
+| API | 只读接口 **Cache-Control**（指数对比 60s、持仓 5min） |
+| 网页 | Cloudflare Pages 边缘 CDN + `/_headers` 长缓存静态资源 |
+| 网页 | 构建时 **dns-prefetch / preconnect** 到 API 域名 |
+
+**现实预期（无 ICP 备案）：**
+
+- 大陆用户访问 `*.fly.dev` / `*.pages.dev` 走国际线路，**比本地慢，但通常可用**
+- 无法保证全国各省都稳定极速；晚高峰可能波动
+- 要明显加速大陆访问，需要 **备案 + 国内/香港云**（阿里云香港、腾讯云等），属于下一阶段
+
+**备案后的路径：** API 迁香港云主机或国内节点 + 自有域名 + 可选国内 CDN。
