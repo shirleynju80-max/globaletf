@@ -18,7 +18,7 @@ import { mapConcurrent } from "../providers/requestUtils";
 import type { DataProvider, ProviderAttempt } from "../providers/types";
 import { tradeDateCloseMs } from "../domain/iopvAlignment";
 import { enrichQuoteWithMatchedIopv, normalizeOnExchangeQuoteSource } from "./iopvQuoteEnrichment";
-import { syncFundTrackingProfiles, applyProfileDiscoverySources } from "./trackingProfileSync";
+import { syncFundTrackingProfiles, applyProfileDiscoverySources, type FundTrackingProfileRow } from "./trackingProfileSync";
 import { mergeFundsForHoldingsSync } from "./holdingsSyncUniverse";
 import { finalizeStockHoldingIndex } from "./stockHoldingIndexSync";
 import { mergeFundsForLimitsSync } from "./limitsSyncUniverse";
@@ -35,6 +35,7 @@ interface DailySyncOptions {
   holdingProviders?: DataProvider<FundHolding[]>[];
   stockScanFundDiscovery?: () => Promise<Fund[]>;
   qdiiHoldingsCatalogLoader?: () => Promise<Fund[]>;
+  trackingProfileSync?: (db: Database.Database, funds: Fund[]) => Promise<FundTrackingProfileRow[]>;
   now?: () => number;
 }
 
@@ -62,7 +63,8 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
   let fundSnapshot = await resolveFunds(db, options);
   const fundDurationMs = elapsedMs(now, fundStartedAt);
   if (options.useLiveProviders) {
-    const profiles = await syncFundTrackingProfiles(db, fundSnapshot.data).catch(() => []);
+    const syncProfiles = options.trackingProfileSync ?? syncFundTrackingProfiles;
+    const profiles = await syncProfiles(db, fundSnapshot.data).catch(() => []);
     fundSnapshot = {
       ...fundSnapshot,
       data: applyProfileDiscoverySources(fundSnapshot.data, profiles)

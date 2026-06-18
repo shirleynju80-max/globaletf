@@ -263,6 +263,7 @@ describe("sync runner", () => {
       areas: ["fund"],
       useLiveProviders: true,
       fundProviders: [fundProvider],
+      trackingProfileSync: async () => [],
       stockScanFundDiscovery: async () => [{
         code: "006308",
         name: "华夏全球科技先锋混合(QDII)",
@@ -357,6 +358,8 @@ describe("sync runner", () => {
       useLiveProviders: true,
       fundProviders: [fundProvider],
       holdingProviders: [holdingProvider],
+      trackingProfileSync: async () => [],
+      stockScanFundDiscovery: async () => [],
       qdiiHoldingsCatalogLoader: async () => [{
         code: "539002",
         name: "建信新兴市场混合(QDII)A",

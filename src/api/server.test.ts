@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryDatabase } from "../db/database";
 import { recordSyncStatus } from "../db/repositories";
+import type { OffExchangeFeeLimitSnapshot } from "../providers/eastmoneyF10";
+import type { DataProvider } from "../providers/types";
 import { runDailySync } from "../sync/syncRunner";
 import { createApp } from "./server";
 
@@ -176,7 +178,24 @@ describe("local API", () => {
   it("re-syncs off-exchange limits and returns updated comparison rows", async () => {
     const db = createInMemoryDatabase();
     await runDailySync(db);
-    const app = createApp(db);
+    const offExchangeProvider: DataProvider<OffExchangeFeeLimitSnapshot> = {
+      name: "test-offexchange",
+      fetch: async () => ({
+        ok: true,
+        source: "test-offexchange",
+        dataDate: "2026-06-12",
+        confidence: 0.9,
+        data: {
+          limits: [{ fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 888, limitUnit: "per_day", channelScope: "agency", source: "test-offexchange", dataDate: "2026-06-12", confidence: 0.9, syncRunId: "test-run" }],
+          fees: []
+        }
+      })
+    };
+    const app = createApp(db, {
+      syncLimits: async (database) => {
+        await runDailySync(database, { areas: ["offExchange"], offExchangeProviders: [offExchangeProvider] });
+      }
+    });
     const server = app.listen(0);
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("Expected TCP server address");
@@ -188,6 +207,7 @@ describe("local API", () => {
     expect(response.status).toBe(200);
     expect(typeof data.asOf).toBe("string");
     expect(Array.isArray(data.offExchange)).toBe(true);
+    expect(data.offExchange.find((row: { code: string }) => row.code === "000834")).toMatchObject({ limitAmountYuan: 888 });
     expect(data.syncStatus?.purchaseLimit?.status).toBeDefined();
   });
 });

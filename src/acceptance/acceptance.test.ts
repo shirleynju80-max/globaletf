@@ -42,6 +42,24 @@ describe("acceptance checks", () => {
     }));
   });
 
+  it("passes when an auto-discovered stock concentration row has a dated unknown purchase status", () => {
+    const db = createAcceptanceDatabase({
+      limits: [
+        { fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "2026-06-11", confidence: 0.9, syncRunId: "acceptance-run" },
+        ...catalogDirectShareLimitFixtures(),
+        { fundCode: "539002", shareClass: "A", status: "unknown", limitUnit: "unknown", channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "2026-06-11", confidence: 0.9, syncRunId: "acceptance-run" }
+      ]
+    });
+
+    const result = runAcceptance(db);
+
+    expect(result.ok).toBe(true);
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      key: "stockConcentrationPurchaseAvailability",
+      ok: true
+    }));
+  });
+
   it("fails when off-exchange stock concentration limits lack units", () => {
     const db = createAcceptanceDatabase({
       limits: [{ fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 1000, channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "2026-06-11", confidence: 0.9, syncRunId: "acceptance-run" }]

@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { queryIndexComparison, queryStockConcentration, querySyncStatus, queryDiscoveryCoverageGaps, queryDiscoveryManifestOrphans, queryDiscoveryProfileGaps, queryFundDiscoveryManifest } from "../db/repositories";
+import type { StockConcentrationRow } from "../db/repositories";
 import { CATALOG_FUNDS, CATALOG_DIRECT_SHARE_FUNDS } from "../domain/fundCatalog";
 import { INDEX_TARGETS, INDEX_TARGET_FUND_SEEDS } from "../domain/targets";
 import { INDEX_TARGETS_PENDING_UNTIL_FUNDS, indexTargetHasFunds } from "../domain/indexTargetAvailability";
@@ -160,10 +161,8 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
     }),
     {
       key: "stockConcentrationPurchaseAvailability",
-      ok: offExchangeStockConcentration.every((row) =>
-        (row.purchaseStatus != null && row.purchaseStatus !== "unknown") || row.limitAmountYuan != null
-      ),
-      message: `NVDA off-exchange purchase availability rows=${offExchangeStockConcentration.length}`
+      ok: offExchangeStockConcentration.every(hasStockPurchaseAvailabilityCoverage),
+      message: `NVDA off-exchange purchase availability rows=${offExchangeStockConcentration.length}, covered=${offExchangeStockConcentration.filter(hasStockPurchaseAvailabilityCoverage).length}, unknown=${offExchangeStockConcentration.filter((row) => row.purchaseStatus === "unknown").length}`
     },
     {
       key: "stockConcentrationLimitUnits",
@@ -181,6 +180,13 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
     ok: checks.every((check) => check.ok),
     checks
   };
+}
+
+function hasStockPurchaseAvailabilityCoverage(row: StockConcentrationRow): boolean {
+  if (row.limitAmountYuan != null) return true;
+  if (row.purchaseStatus == null) return false;
+  if (row.purchaseStatus !== "unknown") return true;
+  return Boolean(row.limitDataDate ?? row.limitEffectiveDate ?? row.limitSyncedAt);
 }
 
 function isActiveIndexTargetComparisonReady(

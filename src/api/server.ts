@@ -31,6 +31,7 @@ function queryLatestQuoteTradeDates(db: Database.Database, fundCodes: string[]):
 
 export interface CreateAppOptions {
   fetchImpl?: typeof fetch;
+  syncLimits?: (db: Database.Database) => Promise<void>;
 }
 
 export function createApp(db: Database.Database, options: CreateAppOptions = {}) {
@@ -111,7 +112,9 @@ export function createApp(db: Database.Database, options: CreateAppOptions = {})
   app.post("/api/sync-limits/:targetCode", noStore(), async (req, res) => {
     const targetCode = routeParam(req.params.targetCode);
     try {
-      await runDailySync(db, { useLiveProviders: true, areas: ["offExchange"] });
+      const syncLimits = options.syncLimits ?? ((database: Database.Database) =>
+        runDailySync(database, { useLiveProviders: true, areas: ["offExchange"] }));
+      await syncLimits(db);
       res.json({
         asOf: new Date().toISOString(),
         offExchange: queryIndexComparison(db, targetCode).offExchange,
