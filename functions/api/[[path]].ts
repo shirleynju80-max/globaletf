@@ -1,17 +1,16 @@
 import { buildApiProxyConfig, buildOriginFetchUrl } from "./proxy";
 
-export const onRequest: PagesFunction<{ API_RESOLVE_IP?: string; API_ORIGIN_HOST?: string; API_ORIGIN?: string }> = async (context) => {
+export const onRequest: PagesFunction<{ API_UPSTREAM_HOST?: string; API_ORIGIN_HOST?: string; API_RESOLVE_IP?: string; API_ORIGIN?: string }> = async (context) => {
   const config = buildApiProxyConfig(new URL(context.request.url), context.params.path, context.env);
   const targetUrl = buildOriginFetchUrl(config);
 
   const headers = new Headers(context.request.headers);
   headers.set("host", config.originHost);
 
-  const init: RequestInit & { cf?: { resolveOverride: string } } = {
+  const init: RequestInit = {
     method: context.request.method,
     headers,
-    redirect: "manual",
-    cf: { resolveOverride: config.resolveIp }
+    redirect: "manual"
   };
   if (context.request.method !== "GET" && context.request.method !== "HEAD") {
     init.body = context.request.body;

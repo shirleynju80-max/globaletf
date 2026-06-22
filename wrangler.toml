@@ -3,5 +3,5 @@ compatibility_date = "2024-06-01"
 pages_build_output_dir = "dist"
 
 [vars]
-API_RESOLVE_IP = "8.147.67.18"
 API_ORIGIN_HOST = "8.147.67.18"
+API_UPSTREAM_HOST = "8-147-67-18.sslip.io"

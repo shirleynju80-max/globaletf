@@ -1,10 +1,11 @@
 export interface ApiProxyConfig {
-  resolveIp: string;
+  upstreamHost: string;
   originHost: string;
   upstreamPath: string;
 }
 
-const DEFAULT_RESOLVE_IP = "8.147.67.18";
+const DEFAULT_ORIGIN_HOST = "8.147.67.18";
+const DEFAULT_UPSTREAM_HOST = "8-147-67-18.sslip.io";
 
 export function parseIpv4Origin(value: string | undefined): string | null {
   if (!value) return null;
@@ -18,19 +19,23 @@ export function parseIpv4Origin(value: string | undefined): string | null {
   }
 }
 
+export function upstreamHostForIp(ip: string): string {
+  return ip.replace(/\./g, "-") + ".sslip.io";
+}
+
 export function buildApiProxyConfig(
   requestUrl: URL,
   pathParam: string | string[] | undefined,
-  env: { API_RESOLVE_IP?: string; API_ORIGIN_HOST?: string; API_ORIGIN?: string } = {}
+  env: { API_UPSTREAM_HOST?: string; API_ORIGIN_HOST?: string; API_RESOLVE_IP?: string; API_ORIGIN?: string } = {}
 ): ApiProxyConfig {
-  const resolveIp = env.API_RESOLVE_IP ?? parseIpv4Origin(env.API_ORIGIN) ?? DEFAULT_RESOLVE_IP;
-  const originHost = env.API_ORIGIN_HOST ?? resolveIp;
+  const originHost = env.API_ORIGIN_HOST ?? parseIpv4Origin(env.API_ORIGIN) ?? env.API_RESOLVE_IP ?? DEFAULT_ORIGIN_HOST;
+  const upstreamHost = env.API_UPSTREAM_HOST ?? upstreamHostForIp(originHost);
   const suffix = Array.isArray(pathParam) ? pathParam.join("/") : pathParam ?? "";
   const upstreamPath = suffix ? `/api/${suffix}${requestUrl.search}` : `/api${requestUrl.search}`;
-  return { resolveIp, originHost, upstreamPath };
+  return { upstreamHost, originHost, upstreamPath };
 }
 
-/** URL host must not be a raw IP — Cloudflare blocks direct IP subrequests (error 1003). */
+/** Use a public hostname (not raw IP) so Cloudflare subrequests are allowed (avoids error 1003). */
 export function buildOriginFetchUrl(config: ApiProxyConfig): string {
-  return new URL(config.upstreamPath, "http://globaletf-origin.internal/").toString();
+  return new URL(config.upstreamPath, `http://${config.upstreamHost}/`).toString();
 }

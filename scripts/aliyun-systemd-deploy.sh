@@ -23,7 +23,7 @@ systemctl daemon-reload
 systemctl enable --now globaletf
 
 echo "Health:"
-curl -fsS "http://127.0.0.1:80/api/health"
+curl -fsS "http://127.0.0.1:8787/api/health"
 echo ""
 echo "First-time data (10–20 min): npm run sync:daily"
 echo "Open http://<公网IP>/ (Aliyun lightweight firewall: use port 80)"

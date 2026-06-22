@@ -33,10 +33,10 @@
 
    | Name | Value |
    |------|--------|
-   | `API_RESOLVE_IP` | `8.147.67.18` |
    | `API_ORIGIN_HOST` | `8.147.67.18` |
+   | `API_UPSTREAM_HOST` | `8-147-67-18.sslip.io`（可选，默认由 IP 自动生成） |
 
-   > 不要用 `API_ORIGIN=http://IP`（Cloudflare 会报 **1003**）。代理通过 `resolveOverride` 连大陆服务器。
+   > 代理经 sslip 公网域名连大陆机，请求头 `Host` 用 IP，避免 Cloudflare **1003** 与备案域名拦截。
 
 4. **不要** 设置 `VITE_API_BASE`（留空 = 同域 `/api`）。
 
