@@ -1,214 +1,170 @@
-# 阿里云部署（推荐：香港单机 Docker）
+# 阿里云部署（推荐：systemd 裸机，不用 Docker）
 
-一台 **阿里云 ECS / 轻量应用服务器** 跑网页 + API + SQLite，**不用改代码**。  
-适合先跑通；大陆用户访问选 **香港** 机房（无需 ICP 备案）。
+一台 **轻量应用服务器 / ECS** 跑网页 + API + SQLite。  
+大陆机房（如乌兰察布）可直接用；**无需 Docker Hub**，避免镜像拉取失败。
 
 ## 架构
 
 ```
-浏览器 → http(s)://公网IP:8787  或  https://你的域名
+浏览器 → http://<公网IP>/   （轻量服务器用 **80** 端口，见下文）
               ↓
-         Docker 单体（SERVE_STATIC=1）
-         ├─ /          静态网页 dist/
-         └─ /api/*     Express + SQLite
+         systemd → npm run start:api（SERVE_STATIC=1）
+         ├─ /          dist/ 静态网页
+         └─ /api/*     Express + data/etflimit.sqlite
 ```
 
-同一域名访问 API，构建时 **不需要** 设置 `VITE_API_BASE`。
+同机同端口，构建时 **不需要** `VITE_API_BASE`。
 
 ---
 
-## 1. 买机器
+## 当前生产状态（8.147.67.18）
 
-登录 [阿里云控制台](https://ecs.console.aliyun.com/)：
-
-| 项 | 建议 |
+| 项 | 状态 |
 |----|------|
-| 产品 | **轻量应用服务器** 或 ECS |
-| 地域 | **中国香港**（先上线、免备案） |
-| 镜像 | Ubuntu 22.04 |
-| 规格 | 2核 2GB 起 |
-| 带宽 | 3–5 Mbps 起 |
+| 代码路径 | `/opt/globaletf` |
+| 服务 | `globaletf.service` **active** |
+| 本机健康检查 | `curl http://127.0.0.1:8787/api/health` → `{"ok":true}` |
+| 数据库 | `data/etflimit.sqlite` ~1.3MB，已跑过 `sync:daily` |
+| 验收 | `npm run acceptance` **PASS** |
+| 定时任务 | crontab 工作日 08:30 / 12:00 / 15:30 |
+| **外网访问** | **http://8.147.67.18/**（端口 **80**，已通） |
 
-创建后在防火墙 / 安全组放行：
-
-- **8787**（应用，先跑通）
-- **80 / 443**（绑域名 HTTPS 时）
-
-记下 **公网 IP**。
-
-> 大陆机房 + 自有域名需要 **ICP 备案**；小程序也必须备案域名。先香港最省事。
+> 轻量服务器防火墙里 **8787 自定义规则可能不生效**；**80** 默认可用。生产已改 `PORT=80`。
 
 ---
 
-## 2. 登录服务器
+## 1. 上传代码
+
+Mac 打包（排除 macOS 元数据）：
 
 ```sh
-ssh root@<公网IP>
+cd /path/to/etflimit
+COPYFILE_DISABLE=1 tar czf ~/Desktop/globaletf.tgz \
+  --exclude=node_modules --exclude=data --exclude=dist --exclude=.git .
 ```
 
----
-
-## 3. 安装 Docker（可选脚本）
+Workbench **上传**到服务器 `/opt/globaletf.tgz`，解压：
 
 ```sh
-curl -fsSL https://get.docker.com | sh
-# 或上传仓库后：
-# bash scripts/aliyun-setup.sh
+sudo mkdir -p /opt/globaletf
+sudo tar xzf /opt/globaletf.tgz -C /opt/globaletf
 ```
 
 ---
 
-## 4. 上传代码
-
-**方式 A — Git（服务器能访问 GitHub 时）**
+## 2. 安装 Node 22（Alibaba Cloud Linux 3）
 
 ```sh
-apt-get update && apt-get install -y git
-git clone <你的仓库地址> /opt/globaletf
-cd /opt/globaletf
+sudo yum install -y python3 make gcc-c++ git
+curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -
+sudo yum install -y nodejs
+node -v   # v22.x
 ```
 
-**方式 B — 本机打包上传**
-
-在本机 Mac：
+npm 镜像（可选，大陆更快）：
 
 ```sh
-cd /Users/shuke-xl/Documents/etflimit
-tar czf /tmp/globaletf.tgz --exclude=node_modules --exclude=data --exclude=dist --exclude=.git .
-scp /tmp/globaletf.tgz root@<公网IP>:/opt/
-```
-
-在服务器：
-
-```sh
-mkdir -p /opt/globaletf && cd /opt/globaletf
-tar xzf /opt/globaletf.tgz -C /opt/globaletf
+npm config set registry https://registry.npmmirror.com
 ```
 
 ---
 
-## 5. 构建并启动
+## 3. 构建 + systemd 服务
 
 ```sh
 cd /opt/globaletf
-docker compose -f docker-compose.aliyun.yml up -d --build
-```
+npm ci
+npm run build
 
-查看日志：
-
-```sh
-docker compose -f docker-compose.aliyun.yml logs -f
-```
-
-本机验证：
-
-```sh
+sudo mkdir -p /opt/globaletf/data /opt/globaletf/logs
+sudo cp deploy/globaletf.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now globaletf
+sudo systemctl status globaletf
 curl http://127.0.0.1:8787/api/health
 ```
 
-浏览器打开：`http://<公网IP>:8787`
+或一键脚本（代码已在 `/opt/globaletf` 时）：
+
+```sh
+sudo bash /opt/globaletf/scripts/aliyun-systemd-deploy.sh
+```
 
 ---
 
-## 6. 首次灌数据（必做）
-
-在容器里跑同步（约 **10–20 分钟**）：
+## 4. 首次灌数据
 
 ```sh
-docker compose -f docker-compose.aliyun.yml exec globaletf npm run sync:daily
+cd /opt/globaletf
+npm run sync:daily      # 约 10–20 分钟
+npm run acceptance      # 数据门禁
 ```
-
-可选验收：
-
-```sh
-docker compose -f docker-compose.aliyun.yml exec globaletf npm run acceptance
-```
-
-完成后刷新 `/indices`、`/stocks` 应有数据。
 
 ---
 
-## 7. 定时同步（crontab）
-
-在**宿主机**加 cron（北京时间工作日）：
+## 5. 定时同步（crontab）
 
 ```sh
-crontab -e
+sudo crontab -e
 ```
 
 ```cron
-30 8 * * 1-5 cd /opt/globaletf && docker compose -f docker-compose.aliyun.yml exec -T globaletf npm run sync:daily >> /var/log/globaletf-sync.log 2>&1
-0 12 * * 1-5 cd /opt/globaletf && docker compose -f docker-compose.aliyun.yml exec -T globaletf npm run sync:limits >> /var/log/globaletf-limits.log 2>&1
-30 15 * * 1-5 cd /opt/globaletf && docker compose -f docker-compose.aliyun.yml exec -T globaletf npm run sync:limits >> /var/log/globaletf-limits.log 2>&1
+30 8 * * 1-5 cd /opt/globaletf && /usr/bin/npm run sync:daily >> /var/log/globaletf-sync.log 2>&1
+0 12 * * 1-5 cd /opt/globaletf && /usr/bin/npm run sync:limits >> /var/log/globaletf-limits.log 2>&1
+30 15 * * 1-5 cd /opt/globaletf && /usr/bin/npm run sync:limits >> /var/log/globaletf-limits.log 2>&1
 ```
-
-详见 [DATA-SYNC.md](./DATA-SYNC.md)。
 
 ---
 
-## 8. 绑定域名 + HTTPS（可选）
+## 6. 放行外网访问
 
-有域名时，在服务器安装 Nginx + Certbot：
+### 轻量应用服务器：用 80 端口（推荐）
+
+控制台防火墙里 **HTTP 80** 通常已放行。服务监听 **80** 即可公网访问：
 
 ```sh
-apt-get install -y nginx certbot python3-certbot-nginx
-cp deploy/nginx-globaletf.conf.example /etc/nginx/sites-available/globaletf
-# 编辑 YOUR_DOMAIN → 你的域名
-ln -s /etc/nginx/sites-available/globaletf /etc/nginx/sites-enabled/
-nginx -t && systemctl reload nginx
-certbot --nginx -d 你的域名
+# deploy/globaletf.service 里 Environment=PORT=80
+curl http://127.0.0.1:80/api/health
 ```
 
-DNS：A 记录指向 ECS 公网 IP。
+浏览器：**http://\<公网IP\>/**（不要加 `:8787`）
 
-备案完成前，香港机器用域名访问仍走国际线路，但比 `IP:8787` 更易记。
+### 若坚持用 8787
+
+添加 **自定义 TCP 8787** 规则。若外网仍 `Empty reply` 而本机 127.0.0.1 正常，说明外层防火墙未转发该端口——**改用 80** 或联系阿里云工单。
+
+### 验证
+
+```sh
+curl http://<公网IP>/api/health
+```
+
+应返回 `{"ok":true}`。
 
 ---
 
-## 9. 日常运维
+## 7. 日常运维
 
 | 操作 | 命令 |
 |------|------|
-| 重启 | `docker compose -f docker-compose.aliyun.yml restart` |
-| 更新代码 | `git pull` 或重新上传 → `docker compose -f docker-compose.aliyun.yml up -d --build` |
-| 看日志 | `docker compose -f docker-compose.aliyun.yml logs -f` |
-| 手动同步 | `docker compose ... exec globaletf npm run sync:daily` |
-| 备份数据库 | `docker compose ... exec globaletf cat /app/data/etflimit.sqlite > backup.sqlite` |
-
-数据卷：`globaletf_data`（`docker volume inspect` 可查路径）。
-
----
-
-## 进阶：网页 OSS + API ECS 分离
-
-和 [DEPLOY.md](./DEPLOY.md) 的 option B 一样，只是 API 放阿里云 ECS、网页放 **OSS + CDN**：
-
-1. 本机构建：`VITE_API_BASE=https://api.你的域名 npm run build`
-2. 上传 `dist/` 到 OSS，开启静态网站 + CDN
-3. ECS 只跑 `Dockerfile.api`（不设 `SERVE_STATIC`）
-
-单机跑通后再拆，运维更省事。
+| 状态 | `systemctl status globaletf` |
+| 重启 | `systemctl restart globaletf` |
+| 日志 | `tail -f /opt/globaletf/logs/app.log` |
+| 更新代码 | 重新上传 → `npm ci && npm run build && systemctl restart globaletf` |
+| 手动同步 | `cd /opt/globaletf && npm run sync:daily` |
+| 备份 DB | `cp /opt/globaletf/data/etflimit.sqlite ~/backup.sqlite` |
 
 ---
 
-## 费用与大陆访问
+## 备选：Docker 部署
 
-| 项 | 说明 |
-|----|------|
-| 费用 | 香港轻量约 **¥24–50/月**（促销价因活动而异），新用户常有试用券 |
-| 大陆速度 | 香港机房通常优于 Fly / 纯海外 Pages |
-| 备案后 | 可迁大陆 ECS + 阿里云 CDN，进一步加速 |
+大陆服务器拉 `docker.io` 常超时，仅在香港/海外或已配置镜像加速时推荐：
 
----
+```sh
+docker compose -f docker-compose.aliyun.yml up -d --build
+```
 
-## 故障排查
-
-| 现象 | 处理 |
-|------|------|
-| 浏览器打不开 | 检查安全组是否放行 8787；`docker compose ps` 是否 Up |
-| 页面空表 | 是否跑过 `sync:daily`；看 `docker compose logs` |
-| `sync:daily` 失败 | 服务器需能访问东方财富等外网数据源；检查 DNS |
-| 构建 OOM | 换 2GB+ 内存，或本机 `docker build` 后推镜像到 ACR |
+见 `docker-compose.aliyun.yml`、`Dockerfile`。
 
 ---
 
@@ -216,7 +172,6 @@ DNS：A 记录指向 ECS 公网 IP。
 
 | 文件 | 用途 |
 |------|------|
-| `docker-compose.aliyun.yml` | 单机编排 |
-| `Dockerfile` | 单体镜像（UI + API） |
-| `deploy/nginx-globaletf.conf.example` | Nginx 反代 |
-| `scripts/aliyun-setup.sh` | 安装 Docker |
+| `deploy/globaletf.service` | systemd 单元 |
+| `scripts/aliyun-systemd-deploy.sh` | 裸机构建 + 启服务 |
+| `deploy/nginx-globaletf.conf.example` | 绑域名时 Nginx 反代 |

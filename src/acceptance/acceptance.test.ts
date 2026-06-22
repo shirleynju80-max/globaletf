@@ -60,6 +60,27 @@ describe("acceptance checks", () => {
     }));
   });
 
+  it("does not require purchase availability for supplemental holdings-discovered funds", () => {
+    const db = createAcceptanceDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "acceptance-run",
+      funds: [{ code: "017642", name: "摩根标普500指数(QDII)美钞", fundType: "指数型-海外股票", venue: "off_exchange", shareClass: "A", enabled: true }],
+      quotes: [],
+      limits: [],
+      fees: [],
+      holdings: [{ fundCode: "017642", stockCode: "NVDA", stockName: "NVIDIA Corp", navPercent: 7.45, reportPeriod: "2026Q1", source: "eastmoney-f10-jjcc", syncRunId: "acceptance-run" }]
+    });
+    rebuildStockFundIndex(db, "acceptance-run");
+
+    const result = runAcceptance(db);
+
+    expect(result.ok).toBe(true);
+    expect(result.checks).toContainEqual(expect.objectContaining({
+      key: "stockConcentrationPurchaseAvailability",
+      ok: true
+    }));
+  });
+
   it("fails when off-exchange stock concentration limits lack units", () => {
     const db = createAcceptanceDatabase({
       limits: [{ fundCode: "000834", shareClass: "A", status: "limited", limitAmountYuan: 1000, channelScope: "agency", source: "tiantian-f10-jjfl", dataDate: "2026-06-11", confidence: 0.9, syncRunId: "acceptance-run" }]

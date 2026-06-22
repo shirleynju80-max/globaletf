@@ -1,0 +1,21 @@
+[Unit]
+Description=globaletf web and API service
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/globaletf
+Environment=NODE_ENV=production
+Environment=HOST=0.0.0.0
+Environment=PORT=80
+Environment=SERVE_STATIC=1
+Environment=STATIC_ROOT=/opt/globaletf/dist
+Environment=DATABASE_PATH=/opt/globaletf/data/etflimit.sqlite
+ExecStart=/usr/bin/npm run start:api
+Restart=always
+RestartSec=5
+StandardOutput=append:/opt/globaletf/logs/app.log
+StandardError=append:/opt/globaletf/logs/app.err.log
+
+[Install]
+WantedBy=multi-user.target

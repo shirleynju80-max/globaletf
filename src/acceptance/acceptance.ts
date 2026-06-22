@@ -39,6 +39,7 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
     row.redemptionFeeSummary != null
   );
   const offExchangeStockConcentration = stockConcentration.filter((row) => row.venue === "off_exchange");
+  const strictStockPurchaseAvailabilityRows = offExchangeStockConcentration.filter(requiresStockPurchaseAvailabilityCoverage);
   const offExchangeStockLimitsWithAmounts = offExchangeStockConcentration.filter((row) => row.limitAmountYuan != null);
 
   const checks: AcceptanceCheck[] = [
@@ -161,8 +162,8 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
     }),
     {
       key: "stockConcentrationPurchaseAvailability",
-      ok: offExchangeStockConcentration.every(hasStockPurchaseAvailabilityCoverage),
-      message: `NVDA off-exchange purchase availability rows=${offExchangeStockConcentration.length}, covered=${offExchangeStockConcentration.filter(hasStockPurchaseAvailabilityCoverage).length}, unknown=${offExchangeStockConcentration.filter((row) => row.purchaseStatus === "unknown").length}`
+      ok: strictStockPurchaseAvailabilityRows.every(hasStockPurchaseAvailabilityCoverage),
+      message: `NVDA off-exchange purchase availability rows=${offExchangeStockConcentration.length}, strict=${strictStockPurchaseAvailabilityRows.length}, covered=${offExchangeStockConcentration.filter(hasStockPurchaseAvailabilityCoverage).length}, unknown=${offExchangeStockConcentration.filter((row) => row.purchaseStatus === "unknown").length}`
     },
     {
       key: "stockConcentrationLimitUnits",
@@ -180,6 +181,10 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
     ok: checks.every((check) => check.ok),
     checks
   };
+}
+
+function requiresStockPurchaseAvailabilityCoverage(row: StockConcentrationRow): boolean {
+  return row.trackingTargetCode != null || STOCK_SCAN_FUNDS.some((fund) => fund.code === row.fundCode);
 }
 
 function hasStockPurchaseAvailabilityCoverage(row: StockConcentrationRow): boolean {
