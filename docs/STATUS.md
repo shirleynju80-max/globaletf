@@ -1,6 +1,6 @@
 # 当前状态（2026-06-18）
 
-分支：`feat/stock-holdings-discovery`（本地有大量未提交改动，尚未合并 main）
+分支：`main`（[PR #1](https://github.com/shirleynju80-max/globaletf/pull/1) 已合并，2026-06-18）
 
 ## 产品概览
 
