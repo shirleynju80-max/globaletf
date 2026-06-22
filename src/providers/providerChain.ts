@@ -1,9 +1,10 @@
+import type { ProductVenue } from "../domain/types";
 import type { DataProvider, ProviderAttempt } from "./types";
 
 export async function runProviderChain<T>(providers: DataProvider<T>[]): Promise<{
   data: T;
   providerResults: ProviderAttempt[];
-  discoveryProfileGaps?: Array<{ targetCode: string; fundCode: string; venue: string }>;
+  discoveryProfileGaps?: Array<{ targetCode: string; fundCode: string; venue: ProductVenue }>;
 }> {
   const providerResults: ProviderAttempt[] = [];
 

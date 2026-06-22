@@ -59,11 +59,24 @@ export function mergeDirectLimits(rows: PurchaseLimit[]): PurchaseLimit[] {
   for (const row of rows) {
     const key = `${row.fundCode}:${row.shareClass}:${row.channelId}`;
     const existing = byKey.get(key);
-    if (!existing || (row.confidence ?? 0) >= (existing.confidence ?? 0)) {
+    if (!existing || compareDirectLimitRows(row, existing) > 0) {
       byKey.set(key, row);
     }
   }
   return [...byKey.values()];
+}
+
+function compareDirectLimitRows(candidate: PurchaseLimit, incumbent: PurchaseLimit): number {
+  const candidateKnown = candidate.status !== "unknown" ? 1 : 0;
+  const incumbentKnown = incumbent.status !== "unknown" ? 1 : 0;
+  if (candidateKnown !== incumbentKnown) return candidateKnown - incumbentKnown;
+
+  const confidenceDiff = (candidate.confidence ?? 0) - (incumbent.confidence ?? 0);
+  if (confidenceDiff !== 0) return confidenceDiff;
+
+  const candidateAmount = candidate.limitAmountYuan != null ? 1 : 0;
+  const incumbentAmount = incumbent.limitAmountYuan != null ? 1 : 0;
+  return candidateAmount - incumbentAmount;
 }
 
 export async function fetchDirectChannelLimits(

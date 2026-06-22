@@ -156,6 +156,17 @@ function pickIopvForTradeDate(
   const sameDay = snapshots.find((row) => row.iopvTime.startsWith(`${tradeDate} `));
   if (sameDay) return { iopv: sameDay.iopv, iopvTime: sameDay.iopvTime, source: "snapshot" };
 
+  const priorOnOrBeforeTradeDate = snapshots
+    .filter((row) => row.iopvTime.slice(0, 10) <= tradeDate)
+    .sort((a, b) => b.iopvTime.localeCompare(a.iopvTime))[0];
+  if (priorOnOrBeforeTradeDate) {
+    return {
+      iopv: priorOnOrBeforeTradeDate.iopv,
+      iopvTime: priorOnOrBeforeTradeDate.iopvTime,
+      source: "snapshot"
+    };
+  }
+
   return null;
 }
 

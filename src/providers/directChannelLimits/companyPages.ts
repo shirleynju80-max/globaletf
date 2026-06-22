@@ -1,4 +1,4 @@
-import { parseMoneyYuan, parsePurchaseStatus } from "../../domain/limitText";
+import { parseMoneyYuan, parsePurchaseStatus, shouldPersistCompanyPageLimit } from "../../domain/limitText";
 import type { DirectChannelId } from "../../domain/channels";
 import type { Fund, PurchaseLimit } from "../../domain/types";
 import { fetchWithTimeout } from "../requestUtils";
@@ -65,7 +65,7 @@ export async function fetchSouthernDirectLimits(
     const response = await fetchWithTimeout(fetchImpl, url, {
       method: "POST",
       headers: {
-        "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
+        "User-Agent": "Mozilla/5.0 globaletf/0.1",
         Referer: "https://www.nffund.com/",
         "Content-Type": "application/json"
       },
@@ -88,7 +88,7 @@ export async function fetchSouthernDirectLimits(
 
   try {
     const htmlResponse = await fetchWithTimeout(fetchImpl, "https://www.nffund.com/new/transaction-guide/product-status-and-limits.html", {
-      headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://www.nffund.com/" }
+      headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://www.nffund.com/" }
     }, timeoutMs);
     if (!htmlResponse.ok) return [];
     return matchCompanyRows(funds, parseSouthernProductStatusTable(await htmlResponse.text()), "nfjj", dataDate, syncRunId);
@@ -110,14 +110,14 @@ export async function fetchBoseraDirectLimits(
       const response = await fetchWithTimeout(
         fetchImpl,
         `https://www.bosera.com/fund/fundTradeLimit.do?fundCode=${fund.code}`,
-        { headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://www.bosera.com/" } },
+        { headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://www.bosera.com/" } },
         timeoutMs
       );
       if (!response.ok) continue;
       const html = await response.text();
-      const statusText = extractLabeledValue(html, "申购状态") ?? extractLabeledValue(html, "申购");
+      const statusText = extractLabeledValue(html, "申购状态") ?? "";
       const limitText = extractLabeledValue(html, "日累计申购限额") ?? extractLabeledValue(html, "申购限额") ?? "";
-      if (!statusText && !limitText) continue;
+      if (!shouldPersistCompanyPageLimit(statusText, limitText)) continue;
       limits.push(companyPageRowToLimit({ fundCode: fund.code, statusText, limitText }, fund, "bosera", dataDate, syncRunId));
     } catch {
       continue;
@@ -141,13 +141,13 @@ export async function fetchHarvestDirectLimits(
     ]) {
       try {
         const response = await fetchWithTimeout(fetchImpl, url, {
-          headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://www.jsfund.cn/" }
+          headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://www.jsfund.cn/" }
         }, timeoutMs);
         if (!response.ok) continue;
         const html = await response.text();
         const statusText = extractLabeledValue(html, "申购状态") ?? "";
         const limitText = extractLabeledValue(html, "日累计申购限额") ?? extractLabeledValue(html, "申购限额") ?? "";
-        if (!statusText && !limitText) continue;
+        if (!shouldPersistCompanyPageLimit(statusText, limitText)) continue;
         limits.push(companyPageRowToLimit({ fundCode: fund.code, statusText, limitText }, fund, "js", dataDate, syncRunId));
         break;
       } catch {
@@ -172,14 +172,14 @@ export async function fetchHuataiPbDirectLimits(
         const response = await fetchWithTimeout(
           fetchImpl,
           `${host}/fund/tradeLimit?fundCode=${fund.code}`,
-          { headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: `${host}/` } },
+          { headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: `${host}/` } },
           timeoutMs
         );
         if (!response.ok) continue;
         const html = await response.text();
         const statusText = extractLabeledValue(html, "申购状态") ?? "";
         const limitText = extractLabeledValue(html, "日累计申购限额") ?? "";
-        if (!statusText && !limitText) continue;
+        if (!shouldPersistCompanyPageLimit(statusText, limitText)) continue;
         limits.push(companyPageRowToLimit({ fundCode: fund.code, statusText, limitText }, fund, "htbr", dataDate, syncRunId));
         break;
       } catch {
@@ -256,13 +256,13 @@ async function fetchSimpleTradeLimitPages(
     for (const buildUrl of urlBuilders) {
       try {
         const response = await fetchWithTimeout(fetchImpl, buildUrl(fund.code), {
-          headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1" }
+          headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1" }
         }, timeoutMs);
         if (!response.ok) continue;
         const html = await response.text();
         const statusText = extractLabeledValue(html, "申购状态") ?? "";
         const limitText = extractLabeledValue(html, "日累计申购限额") ?? extractLabeledValue(html, "申购限额") ?? "";
-        if (!statusText && !limitText) continue;
+        if (!shouldPersistCompanyPageLimit(statusText, limitText)) continue;
         limits.push(companyPageRowToLimit({ fundCode: fund.code, statusText, limitText }, fund, channelId, dataDate, syncRunId));
         break;
       } catch {

@@ -6,7 +6,9 @@ export type DiscoverySource =
   | "agency-channel"
   | "screener-name"
   | "tracking-profile"
-  | "fund-family";
+  | "fund-family"
+  | "stock-scan"
+  | "qdii-holdings-scan";
 
 /** On-exchange tradable fund codes (ETF / cross-listed LOF). */
 export function isOnExchangeTradableCode(code: string): boolean {
@@ -21,11 +23,13 @@ export const INDEX_DISCOVERY_NAME_HINTS: Record<string, RegExp[]> = {
   NASDAQ_100: [/纳斯达克\s*100/, /纳指\s*100/, /NASDAQ\s*100/i, /NSDK100/i, /QQQ/i, /^纳指ETF/, /^纳斯达克ETF/],
   SP_500: [/标普\s*500/, /标普500/, /S&P\s*500/i, /SP\s*500/i, /BP500/i],
   NIKKEI_225: [/日经/, /NIKKEI/i, /225/, /日经225/, /225ETF/i, /日経/, /NI225/i],
-  HSTECH: [/恒生科技/, /恒科/, /HSTECH/i, /恒生指数科技/]
+  HSTECH: [/恒生科技/, /恒科/, /HSTECH/i, /恒生指数科技/],
+  KOSPI: [/韩国综合/, /KOSPI/i, /韩国综合股价/, /韩综指/, /韩国.*综合.*指数/]
 };
 
 export function matchesDiscoveryNameHint(name: string, targetCode: string): boolean {
   if (targetCode === "NASDAQ_100" && /科技|生物|汽车|油气|石油|消费|价值|质量|低波/.test(name)) return false;
+  if (targetCode === "KOSPI" && /半导体|中韩半导体|中韩芯片|芯片ETF|931790/i.test(name)) return false;
   const hints = INDEX_DISCOVERY_NAME_HINTS[targetCode] ?? [];
   return hints.some((pattern) => pattern.test(name));
 }
@@ -59,7 +63,9 @@ const DISCOVERY_SOURCE_LABELS: Record<DiscoverySource, string> = {
   "screener-name": "ETF筛选",
   "agency-channel": "代销搜索",
   "fundcode-search": "代码库",
-  "catalog-seed": "结构种子"
+  "catalog-seed": "结构种子",
+  "stock-scan": "持仓扫描",
+  "qdii-holdings-scan": "季报持仓扫描"
 };
 
 export function formatDiscoverySourceLabel(source: string | null | undefined): string {

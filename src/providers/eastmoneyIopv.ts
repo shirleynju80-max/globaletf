@@ -42,7 +42,7 @@ export async function fetchFundEstimate(
     const response = await fetchWithTimeout(
       fetchImpl,
       `${FUNDGZ_ENDPOINT}/${code}.js?rt=${Date.now()}`,
-      { headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://fund.eastmoney.com/" } },
+      { headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://fund.eastmoney.com/" } },
       timeoutMs
     );
     if (!response.ok) return null;

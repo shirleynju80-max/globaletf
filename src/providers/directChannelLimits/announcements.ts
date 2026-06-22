@@ -114,7 +114,7 @@ async function fetchDirectLimitFromF10Jjgg(
     for (const fundCode of announcementFundCodes(fund)) {
       const listUrl = `${JJGG_ENDPOINT}?type=jjgg&code=${fundCode}&page=1&per=20`;
       const listResponse = await fetchWithTimeout(fetchImpl, listUrl, {
-        headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://fundf10.eastmoney.com/" }
+        headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://fundf10.eastmoney.com/" }
       }, timeoutMs);
       if (!listResponse.ok) continue;
 
@@ -125,7 +125,7 @@ async function fetchDirectLimitFromF10Jjgg(
         ? announcement.detailPath
         : `https://fundf10.eastmoney.com${announcement.detailPath.startsWith("/") ? "" : "/"}${announcement.detailPath}`;
       const detailResponse = await fetchWithTimeout(fetchImpl, detailUrl, {
-        headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://fundf10.eastmoney.com/" }
+        headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://fundf10.eastmoney.com/" }
       }, timeoutMs);
       if (!detailResponse.ok) continue;
 

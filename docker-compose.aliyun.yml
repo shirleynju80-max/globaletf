@@ -1,0 +1,24 @@
+# Aliyun single-server deploy (monolith: static UI + API + SQLite).
+# Usage on ECS: docker compose -f docker-compose.aliyun.yml up -d --build
+services:
+  globaletf:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8787:8787"
+    volumes:
+      - globaletf_data:/app/data
+      - globaletf_logs:/app/logs
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "8787"
+      SERVE_STATIC: "1"
+      STATIC_ROOT: /app/dist
+      DATABASE_PATH: /app/data/etflimit.sqlite
+    restart: unless-stopped
+
+volumes:
+  globaletf_data:
+  globaletf_logs:

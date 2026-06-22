@@ -1,18 +1,28 @@
 import type Database from "better-sqlite3";
-import { insertSnapshotBundle, recordFundDiscoveryManifest, recordProviderResults, recordSyncRun, recordSyncStatus, replaceDiscoveryProfileGaps, type ProviderResultRow, type SyncStatusRow } from "../db/repositories";
+import { insertSnapshotBundle, recordFundDiscoveryManifest, recordProviderResults, recordSyncRun, recordSyncStatus, replaceDiscoveryProfileGaps, queryCachedHoldingsByFundCode, type ProviderResultRow, type SyncStatusRow } from "../db/repositories";
 import { INDEX_TARGETS, INDEX_TARGET_FUND_SEED_FUNDS, INDEX_TARGET_FUND_SEEDS } from "../domain/targets";
-import type { FeeTier, Fund, FundHolding, FundQuote, PurchaseLimit } from "../domain/types";
+import { isDelistedOnExchange } from "../domain/delistedOnExchange";
+import type { FeeTier, Fund, FundHolding, FundQuote, ProductVenue, PurchaseLimit } from "../domain/types";
 import { STOCK_SCAN_FUNDS } from "../domain/stockScanUniverse";
 import { createEastMoneyMultiTargetFundSearchProvider } from "../providers/eastmoneyFundSearch";
-import { createAgencyAugmentedFundDiscoveryProvider } from "../providers/agencyFundDiscovery";
+import { createAgencyAugmentedFundDiscoveryProvider, mergeFundsByCode } from "../providers/agencyFundDiscovery";
+import { discoverStockScanFunds } from "../providers/stockHoldingFundDiscovery";
 import { createEastMoneyHoldingsProvider } from "../providers/eastmoneyHoldings";
 import { createEastMoneyOnExchangeQuoteProvider } from "../providers/eastmoneyOnExchangeQuotes";
 import { mockFees, mockFunds, mockHoldings, mockLimits, mockQuotes } from "../providers/mockProviders";
 import { createMergedOffExchangeProvider, type OffExchangeFeeLimitSnapshot } from "../providers/directChannelLimits";
+import { fetchFundReferenceEstimate } from "../providers/fundReferenceEstimate";
+import { fetchEastMoneyQuoteListMap, mergeQuoteListIopv } from "../providers/eastmoneyQuoteList";
 import { runProviderChain } from "../providers/providerChain";
+import { mapConcurrent } from "../providers/requestUtils";
 import type { DataProvider, ProviderAttempt } from "../providers/types";
-import { enrichQuoteWithMatchedIopv } from "./iopvQuoteEnrichment";
-import { syncFundTrackingProfiles, applyProfileDiscoverySources } from "./trackingProfileSync";
+import { tradeDateCloseMs } from "../domain/iopvAlignment";
+import { enrichQuoteWithMatchedIopv, normalizeOnExchangeQuoteSource } from "./iopvQuoteEnrichment";
+import { syncFundTrackingProfiles, applyProfileDiscoverySources, type FundTrackingProfileRow } from "./trackingProfileSync";
+import { mergeFundsForHoldingsSync } from "./holdingsSyncUniverse";
+import { finalizeStockHoldingIndex } from "./stockHoldingIndexSync";
+import { mergeFundsForLimitsSync } from "./limitsSyncUniverse";
+import { loadQdiiHoldingsCatalog } from "../providers/qdiiHoldingsCatalog";
 
 export type SyncArea = "fund" | "quote" | "offExchange" | "holding";
 
@@ -23,6 +33,9 @@ interface DailySyncOptions {
   quoteProviders?: DataProvider<FundQuote[]>[];
   offExchangeProviders?: DataProvider<OffExchangeFeeLimitSnapshot>[];
   holdingProviders?: DataProvider<FundHolding[]>[];
+  stockScanFundDiscovery?: () => Promise<Fund[]>;
+  qdiiHoldingsCatalogLoader?: () => Promise<Fund[]>;
+  trackingProfileSync?: (db: Database.Database, funds: Fund[]) => Promise<FundTrackingProfileRow[]>;
   now?: () => number;
 }
 
@@ -31,7 +44,7 @@ interface ResolvedData<T> {
   isFallback: boolean;
   providerResults: ProviderAttempt[];
   status: Omit<SyncStatusRow, "area" | "updatedAt">;
-  discoveryProfileGaps?: Array<{ targetCode: string; fundCode: string; venue: string }>;
+  discoveryProfileGaps?: Array<{ targetCode: string; fundCode: string; venue: ProductVenue }>;
 }
 
 interface ResolvedOffExchange {
@@ -50,7 +63,8 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
   let fundSnapshot = await resolveFunds(db, options);
   const fundDurationMs = elapsedMs(now, fundStartedAt);
   if (options.useLiveProviders) {
-    const profiles = await syncFundTrackingProfiles(db, fundSnapshot.data).catch(() => []);
+    const syncProfiles = options.trackingProfileSync ?? syncFundTrackingProfiles;
+    const profiles = await syncProfiles(db, fundSnapshot.data).catch(() => []);
     fundSnapshot = {
       ...fundSnapshot,
       data: applyProfileDiscoverySources(fundSnapshot.data, profiles)
@@ -72,9 +86,13 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
   }
   let holdings: ResolvedData<FundHolding[]> | undefined;
   let holdingDurationMs: number | undefined;
+  let qdiiHoldingsCatalog: Fund[] = [];
+  if (areas.has("holding") && options.useLiveProviders) {
+    qdiiHoldingsCatalog = await resolveQdiiHoldingsCatalog(options);
+  }
   if (areas.has("holding")) {
     const holdingStartedAt = now();
-    holdings = await resolveHoldings(options, fundSnapshot);
+    holdings = await resolveHoldings(db, options, fundSnapshot, qdiiHoldingsCatalog);
     holdingDurationMs = elapsedMs(now, holdingStartedAt);
   }
 
@@ -87,6 +105,9 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
     fees: stampSyncRunId(offExchangeSnapshot?.data.fees ?? [], syncRunId),
     holdings: stampSyncRunId(holdings?.data ?? [], syncRunId)
   });
+  if (areas.has("holding") && holdings && !holdings.isFallback) {
+    finalizeStockHoldingIndex(db, syncRunId, qdiiHoldingsCatalog);
+  }
   recordFundDiscoveryManifest(db, syncRunId, fundSnapshot.data, updatedAt);
   replaceDiscoveryProfileGaps(db, syncRunId, fundSnapshot.discoveryProfileGaps ?? [], updatedAt);
   const statuses: SyncStatusRow[] = [];
@@ -149,8 +170,13 @@ async function resolveFunds(db: Database.Database, options: DailySyncOptions): P
 
   try {
     const result = await runProviderChain(providers);
+    let funds = result.data;
+    if (options.useLiveProviders) {
+      const stockScanDiscovered = await resolveStockScanFunds(options);
+      funds = mergeFundsByCode([...funds, ...stockScanDiscovered]);
+    }
     return resolvedOk(
-      withCuratedFunds(result.data),
+      withCuratedFunds(funds),
       successSource(result.providerResults),
       successDataDate(result.providerResults),
       false,
@@ -192,25 +218,42 @@ function withCuratedFunds(funds: Fund[]): Fund[] {
       parentFundCode: curated.parentFundCode ?? discovered.parentFundCode,
       fundCompany: discovered.fundCompany?.trim() || curated.fundCompany,
       name: discovered.name || curated.name,
-      enabled: true,
+      enabled: isDelistedOnExchange(curated.code) ? false : true,
       discoverySource: discovered.discoverySource ?? "catalog-seed"
     });
   }
-  return [...byCode.values()];
+  return applyDelistedOnExchange([...byCode.values()]);
+}
+
+function applyDelistedOnExchange(funds: Fund[]): Fund[] {
+  return funds.map((fund) =>
+    fund.venue === "on_exchange" && isDelistedOnExchange(fund.code) ? { ...fund, enabled: false } : fund
+  );
+}
+
+async function resolveStockScanFunds(options: DailySyncOptions): Promise<Fund[]> {
+  try {
+    if (options.stockScanFundDiscovery) return await options.stockScanFundDiscovery();
+    return await discoverStockScanFunds();
+  } catch {
+    return [];
+  }
 }
 
 async function resolveQuotes(db: Database.Database, options: DailySyncOptions, fundSnapshot: ResolvedData<Fund[]>): Promise<ResolvedData<FundQuote[]>> {
   const providers = options.quoteProviders ?? (options.useLiveProviders ? [createEastMoneyOnExchangeQuoteProvider(fundSnapshot.data)] : []);
-  if (providers.length === 0) return resolvedOk(enrichQuotes(db, mockQuotes), sourceFromQuotes(mockQuotes), latestQuoteDate(mockQuotes), true);
+  if (providers.length === 0) return resolvedOk(await enrichQuotes(db, mockQuotes), sourceFromQuotes(mockQuotes), latestQuoteDate(mockQuotes), true);
 
   try {
     const result = await runProviderChain(providers);
-    const enriched = enrichQuotes(db, result.data);
-    const cachedQuotes = queryCachedQuotes(db, fundSnapshot.data, new Set(result.data.map((quote) => quote.fundCode)));
+    const enriched = await enrichQuotes(db, result.data);
+    const { quotes: withTurnover, backfillCount } = backfillStaleTurnover(db, enriched);
+    const cachedQuotes = queryCachedQuotes(db, fundSnapshot.data, new Set(withTurnover.map((quote) => quote.fundCode)));
+    const source = sourceFromQuotes(withTurnover) ?? successSource(result.providerResults);
     if (cachedQuotes.length > 0) {
       return resolvedFallback(
-        [...enriched, ...cachedQuotes],
-        `${sourceFromQuotes(result.data) ?? successSource(result.providerResults)}+local-cache`,
+        [...withTurnover, ...cachedQuotes],
+        `${source}+local-cache`,
         latestQuoteDate(result.data) ?? successDataDate(result.providerResults),
         { source: null, errorCategory: null, message: null },
         result.data.length,
@@ -218,7 +261,7 @@ async function resolveQuotes(db: Database.Database, options: DailySyncOptions, f
         result.providerResults
       );
     }
-    return resolvedOk(enriched, sourceFromQuotes(result.data) ?? successSource(result.providerResults), latestQuoteDate(result.data) ?? successDataDate(result.providerResults), false, result.data.length, 0, result.providerResults);
+    return resolvedOk(withTurnover, source, latestQuoteDate(result.data) ?? successDataDate(result.providerResults), false, result.data.length, 0, result.providerResults);
   } catch (error) {
     const failure = providerFailure(error, providers);
     const attempts = providerAttempts(error);
@@ -227,16 +270,50 @@ async function resolveQuotes(db: Database.Database, options: DailySyncOptions, f
       return resolvedFallback(cachedQuotes, "local-cache", latestQuoteDate(cachedQuotes), failure, 0, cachedQuotes.length, attempts);
     }
     if (!fundSnapshot.isFallback) return resolvedError([], failure, attempts);
-    return resolvedFallback(enrichQuotes(db, mockQuotes), sourceFromQuotes(mockQuotes), latestQuoteDate(mockQuotes), failure, undefined, undefined, attempts);
+    return resolvedFallback(await enrichQuotes(db, mockQuotes), sourceFromQuotes(mockQuotes), latestQuoteDate(mockQuotes), failure, undefined, undefined, attempts);
   }
 }
 
-function enrichQuotes(db: Database.Database, quotes: FundQuote[]): FundQuote[] {
-  return quotes.map((quote) => enrichQuoteWithMatchedIopv(db, quote, null, null));
+async function enrichQuotes(db: Database.Database, quotes: FundQuote[], fetchImpl: typeof fetch = fetch): Promise<FundQuote[]> {
+  const fundCodes = quotes.map((quote) => quote.fundCode);
+  const quoteListByCode = fundCodes.length > 0
+    ? await fetchEastMoneyQuoteListMap(fetchImpl, fundCodes)
+    : new Map();
+
+  return mapConcurrent(quotes, 6, async (quote) => {
+    const quoteListRow = quoteListByCode.get(quote.fundCode) ?? null;
+    let estimate: Awaited<ReturnType<typeof fetchFundReferenceEstimate>> = null;
+    if (quote.iopv == null || quote.iopvTime?.endsWith(" 04:00")) {
+      const fallback = await fetchFundReferenceEstimate(fetchImpl, quote.fundCode);
+      estimate = mergeQuoteListIopv(quoteListRow, fallback, quote.tradeDate);
+    }
+    const enriched = enrichQuoteWithMatchedIopv(
+      db,
+      quote,
+      estimate,
+      tradeDateCloseMs(quote.tradeDate),
+      quoteListRow
+    );
+    return normalizeOnExchangeQuoteSource(enriched);
+  });
+}
+
+async function resolveLimitsSyncFunds(
+  db: Database.Database,
+  options: DailySyncOptions,
+  fundSnapshot: ResolvedData<Fund[]>
+): Promise<Fund[]> {
+  let funds = mergeFundsForLimitsSync(fundSnapshot.data, queryCachedFunds(db));
+  if (options.useLiveProviders) {
+    const catalog = await resolveQdiiHoldingsCatalog(options);
+    funds = mergeFundsForLimitsSync(funds, catalog);
+  }
+  return funds;
 }
 
 async function resolveOffExchangeSnapshot(db: Database.Database, options: DailySyncOptions, fundSnapshot: ResolvedData<Fund[]>): Promise<ResolvedOffExchange> {
-  const providers = options.offExchangeProviders ?? (options.useLiveProviders ? [createMergedOffExchangeProvider(fundSnapshot.data)] : []);
+  const limitsFunds = await resolveLimitsSyncFunds(db, options, fundSnapshot);
+  const providers = options.offExchangeProviders ?? (options.useLiveProviders ? [createMergedOffExchangeProvider(limitsFunds)] : []);
   if (providers.length === 0) return resolvedOffExchangeOk({ limits: mockLimits, fees: mockFees }, "mock", true);
 
   try {
@@ -254,8 +331,26 @@ async function resolveOffExchangeSnapshot(db: Database.Database, options: DailyS
   }
 }
 
-async function resolveHoldings(options: DailySyncOptions, fundSnapshot: ResolvedData<Fund[]>): Promise<ResolvedData<FundHolding[]>> {
-  const providers = options.holdingProviders ?? (options.useLiveProviders ? [createEastMoneyHoldingsProvider(fundSnapshot.data)] : []);
+async function resolveQdiiHoldingsCatalog(options: DailySyncOptions): Promise<Fund[]> {
+  try {
+    if (options.qdiiHoldingsCatalogLoader) return await options.qdiiHoldingsCatalogLoader();
+    return await loadQdiiHoldingsCatalog();
+  } catch {
+    return [];
+  }
+}
+
+async function resolveHoldings(
+  db: Database.Database,
+  options: DailySyncOptions,
+  fundSnapshot: ResolvedData<Fund[]>,
+  qdiiHoldingsCatalog: Fund[] = []
+): Promise<ResolvedData<FundHolding[]>> {
+  const holdingsFunds = mergeFundsForHoldingsSync(fundSnapshot.data, qdiiHoldingsCatalog);
+  const cachedHoldingsByFundCode = queryCachedHoldingsByFundCode(db, holdingsFunds.map((fund) => fund.code));
+  const providers = options.holdingProviders ?? (options.useLiveProviders
+    ? [createEastMoneyHoldingsProvider(holdingsFunds, { cachedHoldingsByFundCode })]
+    : []);
   if (providers.length === 0) return resolvedOk(mockHoldings, sourceFromHoldings(mockHoldings), latestHoldingPeriod(mockHoldings), true);
 
   try {
@@ -277,7 +372,7 @@ function resolvedOk<T>(
   freshItemCount?: number,
   cachedItemCount?: number,
   providerResults: ProviderAttempt[] = [],
-  discoveryProfileGaps?: Array<{ targetCode: string; fundCode: string; venue: string }>
+  discoveryProfileGaps?: Array<{ targetCode: string; fundCode: string; venue: ProductVenue }>
 ): ResolvedData<T[]> {
   return {
     data,
@@ -476,6 +571,52 @@ function queryCachedFunds(db: Database.Database): Fund[] {
       enabled: fund.enabled === 1
     };
   });
+}
+
+function backfillStaleTurnover(db: Database.Database, quotes: FundQuote[]): { quotes: FundQuote[]; backfillCount: number } {
+  const missingCodes = quotes.filter((quote) => quote.turnover == null).map((quote) => quote.fundCode);
+  if (missingCodes.length === 0) return { quotes, backfillCount: 0 };
+
+  const staleByCode = queryCachedTurnoverByFundCode(db, missingCodes);
+  let backfillCount = 0;
+  const updated = quotes.map((quote) => {
+    if (quote.turnover != null) return quote;
+    const stale = staleByCode.get(quote.fundCode);
+    if (!stale) return quote;
+    backfillCount += 1;
+    return {
+      ...quote,
+      turnover: stale.turnover,
+      source: quote.source.includes("stale-turnover") ? quote.source : `${quote.source}+stale-turnover`
+    };
+  });
+  return { quotes: updated, backfillCount };
+}
+
+function queryCachedTurnoverByFundCode(db: Database.Database, fundCodes: string[]): Map<string, { turnover: number }> {
+  if (fundCodes.length === 0) return new Map();
+  const placeholders = fundCodes.map(() => "?").join(",");
+  const rows = db.prepare(`
+    SELECT fund_code AS fundCode, turnover
+    FROM fund_quotes q
+    WHERE fund_code IN (${placeholders})
+      AND turnover IS NOT NULL
+      AND q.rowid = (
+        SELECT q2.rowid
+        FROM fund_quotes q2
+        WHERE q2.fund_code = q.fund_code
+          AND q2.turnover IS NOT NULL
+        ORDER BY q2.trade_date DESC,
+          CASE q2.source
+            WHEN 'eastmoney-on-exchange-quote' THEN 0
+            WHEN 'eastmoney-on-exchange-spot' THEN 1
+            WHEN 'eastmoney' THEN 2
+            ELSE 3
+          END
+        LIMIT 1
+      )
+  `).all(...fundCodes) as Array<{ fundCode: string; turnover: number }>;
+  return new Map(rows.map((row) => [row.fundCode, { turnover: row.turnover }]));
 }
 
 function queryCachedQuotes(db: Database.Database, funds: Fund[], excludeFundCodes = new Set<string>()): FundQuote[] {

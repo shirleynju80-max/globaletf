@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { IndexComparison } from "./IndexComparison";
 
@@ -15,12 +15,128 @@ describe("IndexComparison", () => {
     );
 
     expect(screen.getByText("昨日收盘折溢价")).toBeInTheDocument();
-    expect(screen.getByText("1.20%（按2026-06-07净值）")).toBeInTheDocument();
-    expect(screen.getByText("交易成本提示")).toBeInTheDocument();
-    expect(screen.getByText("看佣金/买卖价差，成交额越高通常越好")).toBeInTheDocument();
-    expect(screen.getByText(/仅供参考/)).toBeInTheDocument();
-    expect(screen.getByText(/场内按成交额排序/)).toBeInTheDocument();
-    expect(screen.getByText(/场外代销取各平台最严限额/)).toBeInTheDocument();
+    expect(screen.getByText("1.20%")).toBeInTheDocument();
+    expect(screen.getByText("昨日成交额")).toBeInTheDocument();
+    expect(screen.queryByText("交易成本提示")).not.toBeInTheDocument();
+  });
+
+  it("sorts on-exchange rows by live or snapshot premium descending", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [
+            { code: "513100", name: "低溢价", iopvPremiumDiscountRate: 0.05, turnover: 100, tradeDate: "2026-06-10", source: "eastmoney" },
+            { code: "159659", name: "高溢价", iopvPremiumDiscountRate: 0.10, turnover: 200, tradeDate: "2026-06-10", source: "eastmoney" }
+          ],
+          offExchange: []
+        }}
+      />
+    );
+
+    const codes = screen.getAllByRole("cell", { name: /^\d{6}$/ }).map((cell) => cell.textContent);
+    expect(codes).toEqual(["159659", "513100"]);
+  });
+
+  it("sorts on-exchange rows by turnover when the turnover header is clicked", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [
+            { code: "513100", name: "低成交", iopvPremiumDiscountRate: 0.10, turnover: 100, tradeDate: "2026-06-10", source: "eastmoney" },
+            { code: "159659", name: "高成交", iopvPremiumDiscountRate: 0.05, turnover: 200, tradeDate: "2026-06-10", source: "eastmoney" }
+          ],
+          offExchange: []
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /昨日成交额/ }));
+    const codes = screen.getAllByRole("cell", { name: /^\d{6}$/ }).map((cell) => cell.textContent);
+    expect(codes).toEqual(["159659", "513100"]);
+  });
+
+  it("sorts on-exchange rows by closing premium when the header is clicked", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [
+            { code: "513100", name: "低收盘溢价", closingPremiumDiscountRate: 0.01, turnover: 100, tradeDate: "2026-06-10", source: "eastmoney" },
+            { code: "159659", name: "高收盘溢价", closingPremiumDiscountRate: 0.04, turnover: 200, tradeDate: "2026-06-10", source: "eastmoney" }
+          ],
+          offExchange: []
+        }}
+      />
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /昨日收盘折溢价/ }));
+    const codes = screen.getAllByRole("cell", { name: /^\d{6}$/ }).map((cell) => cell.textContent);
+    expect(codes).toEqual(["159659", "513100"]);
+  });
+
+  it("shows live premium and price only after the live refresh completes", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [{
+            code: "513100",
+            name: "纳指ETF国泰",
+            closePrice: 2.28,
+            closingPremiumDiscountRate: 0.0986,
+            iopvPremiumDiscountRate: 0.1195,
+            turnover: 744435531,
+            tradeDate: "2026-06-16",
+            source: "eastmoney-on-exchange-quote"
+          }],
+          offExchange: []
+        }}
+        liveAsOf="2026-06-18T04:15:59.089Z"
+        livePremiums={{
+          "513100": {
+            price: 2.246,
+            priceTime: "2026-06-18T04:15:52.000Z",
+            iopv: 2.0165,
+            iopvTime: "2026-06-18 12:15",
+            iopvPremiumDiscountRate: 0.1138,
+            aligned: true,
+            iopvSource: "current"
+          }
+        }}
+      />
+    );
+
+    expect(screen.getByText("2.246")).toBeInTheDocument();
+    expect(screen.getByText("11.38%")).toBeInTheDocument();
+    expect(screen.queryByText("2.28")).not.toBeInTheDocument();
+    expect(screen.queryByText("11.95%")).not.toBeInTheDocument();
+  });
+
+  it("does not show snapshot close price or IOPV premium in live columns while pending", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [{
+            code: "513100",
+            name: "纳指ETF国泰",
+            closePrice: 2.28,
+            iopvPremiumDiscountRate: 0.1195,
+            turnover: 744435531,
+            tradeDate: "2026-06-16",
+            source: "eastmoney-on-exchange-quote"
+          }],
+          offExchange: []
+        }}
+      />
+    );
+
+    expect(screen.getByText("实时数据更新中...")).toBeInTheDocument();
+    expect(screen.getAllByText("—").length).toBeGreaterThanOrEqual(2);
+    expect(screen.queryByText("2.28")).not.toBeInTheDocument();
+    expect(screen.queryByText("11.95%")).not.toBeInTheDocument();
   });
 
   it("shows the IOPV-based premium as the primary gauge with its estimate time", () => {
@@ -44,15 +160,40 @@ describe("IndexComparison", () => {
           }],
           offExchange: []
         }}
+        liveAsOf="2026-06-15T04:13:00.000Z"
+        livePremiums={{
+          "159632": {
+            price: 2.458,
+            priceTime: "2026-06-13T06:30:00.000Z",
+            iopv: 2.2866,
+            iopvTime: "2026-06-13 04:00",
+            iopvPremiumDiscountRate: 0.0749,
+            aligned: true,
+            iopvSource: "current"
+          }
+        }}
       />
     );
 
-    expect(screen.getByText("折溢价(实时估值)")).toBeInTheDocument();
-    expect(screen.getByText("7.49%（截至2026-06-13 04:00）")).toBeInTheDocument();
-    expect(screen.getByText(/实时估值\(IOPV\)/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /折溢价（实时）/ })).toBeInTheDocument();
+    expect(screen.getByText("7.49%")).toBeInTheDocument();
   });
 
-  it("overlays live premium with prior-snapshot IOPV label when fallback is used", () => {
+  it("shows pending live status before the first refresh completes", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [{ code: "513100", name: "纳指ETF", iopvPremiumDiscountRate: 0.01, turnover: 100, tradeDate: "2026-06-10", source: "eastmoney" }],
+          offExchange: []
+        }}
+      />
+    );
+
+    expect(screen.getByText("实时数据更新中...")).toBeInTheDocument();
+  });
+
+  it("overlays live premium when background refresh returns newer values", () => {
     render(
       <IndexComparison
         targetName="纳斯达克100"
@@ -64,12 +205,11 @@ describe("IndexComparison", () => {
         livePremiums={{
           "159632": { price: 2.376, priceTime: "2026-06-12T07:00:00.000Z", iopv: 2.25, iopvTime: "2026-06-12 04:00", iopvPremiumDiscountRate: 0.056, aligned: false, iopvSource: "trade_date_match" }
         }}
-        onRefreshLive={() => {}}
       />
     );
 
-    expect(screen.getByText("实时刷新折溢价")).toBeInTheDocument();
-    expect(screen.getByText(/对应交易日估值/)).toBeInTheDocument();
+    expect(screen.getByText(/实时数据更新于/)).toBeInTheDocument();
+    expect(screen.getByText("5.60%")).toBeInTheDocument();
   });
 
   it("shows a clear placeholder when the IOPV estimate is missing", () => {
@@ -80,6 +220,7 @@ describe("IndexComparison", () => {
           onExchange: [{ code: "513100", name: "纳指ETF", closePrice: 1.23, closingPremiumDiscountRate: 0.012, iopvPremiumDiscountRate: null, turnover: 120000000, tradeDate: "2026-06-08", source: "eastmoney" }],
           offExchange: []
         }}
+        liveAsOf="2026-06-15T04:13:00.000Z"
       />
     );
 
@@ -121,7 +262,7 @@ describe("IndexComparison", () => {
       />
     );
 
-    expect(screen.getByText("3.66%（按2026-06-11净值）")).toBeInTheDocument();
+    expect(screen.getByText("3.66%")).toBeInTheDocument();
   });
 
   it("shows off-exchange fee cost columns", () => {
@@ -139,7 +280,7 @@ describe("IndexComparison", () => {
             limitUnit: "per_day",
             channelScope: "agency",
             defaultSubscriptionRate: 0.0012,
-            redemptionFeeSummary: "0-6天: 1.50%; 7-29天: 0.50%",
+            redemptionFeeSummary: "0-6天: 1.5%; 7-29天: 0.5%",
             managementRate: 0.008,
             custodianRate: 0.002,
             salesServiceRate: 0,
@@ -152,10 +293,11 @@ describe("IndexComparison", () => {
 
     expect(screen.getByText("申购费")).toBeInTheDocument();
     expect(screen.getByText("10 元/日")).toBeInTheDocument();
-    expect(screen.getByText("数据日期")).toBeInTheDocument();
-    expect(screen.getByText("2026-06-09")).toBeInTheDocument();
+    expect(screen.queryByText("生效日")).not.toBeInTheDocument();
+    expect(screen.queryByText("同步日")).not.toBeInTheDocument();
+    expect(screen.queryByText("来源")).not.toBeInTheDocument();
     expect(screen.getByText("0.12%")).toBeInTheDocument();
-    expect(screen.getByText("0-6天: 1.50%; 7-29天: 0.50%")).toBeInTheDocument();
+    expect(screen.getByText("0-6天: 1.5%; 7-29天: 0.5%")).toBeInTheDocument();
     expect(screen.getByText("0.80% / 0.20% / 0.00%")).toBeInTheDocument();
   });
 
@@ -193,17 +335,24 @@ describe("IndexComparison", () => {
     expect(container.querySelector('[data-status="limited"]')).toHaveTextContent("限购");
     expect(screen.getByText("开放申购，未披露限额")).toBeInTheDocument();
     expect(screen.getByText("限额待确认")).toBeInTheDocument();
-    expect(screen.getByText("优先")).toBeInTheDocument();
-    expect(screen.getByText("待确认")).toBeInTheDocument();
   });
 
-  it("summarizes off-exchange purchase priority", () => {
+  it("sorts off-exchange rows by purchase limit descending by default", () => {
     render(
       <IndexComparison
         targetName="纳斯达克100"
         data={{
           onExchange: [],
           offExchange: [
+            {
+              code: "000834",
+              name: "纳指100联接A",
+              shareClass: "A",
+              status: "limited",
+              limitAmountYuan: 1000,
+              channelScope: "agency",
+              source: "tiantian"
+            },
             {
               code: "021778",
               name: "广发纳指100ETF联接F",
@@ -214,11 +363,11 @@ describe("IndexComparison", () => {
               source: "tiantian"
             },
             {
-              code: "000834",
-              name: "纳指100联接A",
+              code: "050025",
+              name: "博时标普500ETF联接A",
               shareClass: "A",
-              status: "limited",
-              limitAmountYuan: 1000,
+              status: "open",
+              limitAmountYuan: null,
               channelScope: "agency",
               source: "tiantian"
             }
@@ -227,9 +376,45 @@ describe("IndexComparison", () => {
       />
     );
 
-    expect(screen.getAllByText("可买性").length).toBeGreaterThanOrEqual(1);
-    expect(screen.getByText("高限额")).toBeInTheDocument();
-    expect(screen.getByText("低限额")).toBeInTheDocument();
+    const codes = screen.getAllByRole("cell", { name: /^\d{6}$/ }).map((cell) => cell.textContent);
+    expect(codes).toEqual(["050025", "021778", "000834"]);
+  });
+
+  it("folds suspended off-exchange rows behind a collapsible section", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [],
+          offExchange: [
+            {
+              code: "000834",
+              name: "纳指100联接A",
+              shareClass: "A",
+              status: "limited",
+              limitAmountYuan: 1000,
+              channelScope: "agency",
+              source: "tiantian"
+            },
+            {
+              code: "024237",
+              name: "博时纳指I",
+              shareClass: "I",
+              status: "suspended",
+              channelScope: "direct",
+              source: "fundco-announcement-bosera"
+            }
+          ]
+        }}
+      />
+    );
+
+    expect(screen.getByText("000834")).toBeInTheDocument();
+    expect(screen.queryByText("024237")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /暂停申购（1）/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /暂停申购（1）/ }));
+    expect(screen.getByText("024237")).toBeInTheDocument();
   });
 
   it("marks suspended and unknown purchase statuses distinctly", () => {
@@ -259,9 +444,9 @@ describe("IndexComparison", () => {
       />
     );
 
-    expect(container.querySelector('[data-status="suspended"]')).toHaveTextContent("暂停");
     expect(container.querySelector('[data-status="unknown"]')).toHaveTextContent("未知");
-    expect(screen.getByText("暂停申购")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /暂停申购（1）/ }));
+    expect(container.querySelector('[data-status="suspended"]')).toHaveTextContent("暂停");
   });
 
   it("shows empty states for missing on-exchange and off-exchange rows", () => {
@@ -276,21 +461,44 @@ describe("IndexComparison", () => {
     );
 
     expect(screen.getByText("暂无标普500场内 ETF/LOF 数据")).toBeInTheDocument();
-    expect(screen.getByText("暂无标普500代销 A/C/F 数据")).toBeInTheDocument();
+    expect(screen.getByText("暂无标普500场外基金数据")).toBeInTheDocument();
   });
 
-  it("shows discovery source labels and splits direct I/F from agency shares", () => {
+  it("shows reconciliation flags in the review collapsible section", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [],
+          offExchange: [{
+            code: "021000",
+            name: "南方纳指100 I",
+            shareClass: "I",
+            status: "limited",
+            limitAmountYuan: 5000,
+            limitUnit: "per_day",
+            limitEffectiveDate: "2026-04-08",
+            limitSyncedAt: "2026-06-16",
+            limitStale: true,
+            channelScope: "direct",
+            channelId: "nfjj",
+            source: "fundco-announcement-nfjj"
+          }]
+        }}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: /待核实（1）/ })).toBeInTheDocument();
+    expect(screen.queryByText("待核实")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /待核实（1）/ }));
+    expect(screen.getByText("待核实")).toBeInTheDocument();
+    expect(screen.getByText("直销")).toBeInTheDocument();
+  });
+
+  it("shows discovery source labels and highlights direct-channel rows in the unified off-exchange table", () => {
     const { container } = render(
       <IndexComparison
         targetName="纳斯达克100"
-        discoveryHealth={{
-          targetCode: "NASDAQ_100",
-          manifestCount: 53,
-          onExchangeCount: 14,
-          profileBackedOnExchange: 14,
-          profileGaps: [],
-          coverageGaps: []
-        }}
         data={{
           onExchange: [{
             code: "513100",
@@ -328,32 +536,10 @@ describe("IndexComparison", () => {
       />
     );
 
-    expect(screen.getByText("发现来源")).toBeInTheDocument();
-    expect(screen.getByText("F10校验")).toBeInTheDocument();
-    expect(screen.getByText("纳斯达克100 发现覆盖正常")).toBeInTheDocument();
-    expect(screen.getByText("直销 I/F（基金公司渠道）")).toBeInTheDocument();
-    expect(screen.getByText("代销 A/C/F 份额")).toBeInTheDocument();
+    expect(screen.getByText("场外基金")).toBeInTheDocument();
     expect(container.querySelector(".row-direct-limit")).toBeTruthy();
     expect(screen.getByText("5,000 元/日")).toBeInTheDocument();
+    expect(screen.queryByText("可买性")).not.toBeInTheDocument();
   });
 
-  it("warns when discovery profile gaps are present", () => {
-    render(
-      <IndexComparison
-        targetName="纳斯达克100"
-        discoveryHealth={{
-          targetCode: "NASDAQ_100",
-          manifestCount: 50,
-          onExchangeCount: 12,
-          profileBackedOnExchange: 10,
-          profileGaps: [{ targetCode: "NASDAQ_100", fundCode: "159999", venue: "on_exchange" }],
-          coverageGaps: []
-        }}
-        data={{ onExchange: [], offExchange: [] }}
-      />
-    );
-
-    expect(screen.getByText("纳斯达克100 发现覆盖需关注")).toBeInTheDocument();
-    expect(screen.getByText(/159999/)).toBeInTheDocument();
-  });
 });

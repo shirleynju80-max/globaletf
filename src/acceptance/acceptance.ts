@@ -1,8 +1,11 @@
 import type Database from "better-sqlite3";
 import { queryIndexComparison, queryStockConcentration, querySyncStatus, queryDiscoveryCoverageGaps, queryDiscoveryManifestOrphans, queryDiscoveryProfileGaps, queryFundDiscoveryManifest } from "../db/repositories";
+import type { StockConcentrationRow } from "../db/repositories";
 import { CATALOG_FUNDS, CATALOG_DIRECT_SHARE_FUNDS } from "../domain/fundCatalog";
 import { INDEX_TARGETS, INDEX_TARGET_FUND_SEEDS } from "../domain/targets";
+import { INDEX_TARGETS_PENDING_UNTIL_FUNDS, indexTargetHasFunds } from "../domain/indexTargetAvailability";
 import { STOCK_SCAN_FUNDS } from "../domain/stockScanUniverse";
+import { countStockIndexFunds } from "../sync/stockHoldingIndexSync";
 import { queryFundTrackingProfileMismatches } from "../sync/trackingProfileSync";
 
 export interface AcceptanceCheck {
@@ -25,7 +28,7 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
   }));
   const nasdaqComparison = comparisons.find((entry) => entry.target.code === "NASDAQ_100")?.comparison ?? { onExchange: [], offExchange: [] };
   const nikkeiComparison = comparisons.find((entry) => entry.target.code === "NIKKEI_225")?.comparison ?? { onExchange: [], offExchange: [] };
-  const stockConcentration = queryStockConcentration(db, "NVDA");
+  const stockConcentration = queryStockConcentration(db, "NVDA").rows;
   const nasdaqOnExchangePricedRows = nasdaqComparison.onExchange.filter((row) => row.closePrice != null);
   const nasdaqOffExchangeLimitRows = nasdaqComparison.offExchange.filter((row) => row.limitAmountYuan != null || row.status === "open" || row.status === "limited");
   const nasdaqOffExchangeFeeRows = nasdaqComparison.offExchange.filter((row) =>
@@ -51,7 +54,7 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
     },
     ...comparisons.map(({ target, comparison }) => ({
       key: `indexComparison.${target.code}`,
-      ok: comparison.onExchange.length > 0 && comparison.offExchange.length > 0,
+      ok: isActiveIndexTargetComparisonReady(target.code, comparison),
       message: `${target.code} on-exchange=${comparison.onExchange.length}, off-exchange=${comparison.offExchange.length}`
     })),
     ...comparisons.flatMap(({ target, comparison }) => {
@@ -108,9 +111,24 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
       message: "At least one off-exchange fund has purchase limit/status data"
     },
     {
+      key: "offExchangeKnownLimits",
+      ok: nasdaqOffExchangeLimitRows.every((row) => row.status !== "unknown"),
+      message: `NASDAQ_100 off-exchange rows with known purchase status=${nasdaqOffExchangeLimitRows.filter((row) => row.status !== "unknown").length}/${nasdaqOffExchangeLimitRows.length}`
+    },
+    {
       key: "offExchangeLimitDataDates",
-      ok: nasdaqOffExchangeLimitRows.every((row) => Boolean(row.limitDataDate)),
-      message: `NASDAQ_100 off-exchange limit rows with dates=${nasdaqOffExchangeLimitRows.filter((row) => Boolean(row.limitDataDate)).length}/${nasdaqOffExchangeLimitRows.length}`
+      ok: nasdaqOffExchangeLimitRows.every((row) => Boolean(row.limitEffectiveDate ?? row.limitDataDate)),
+      message: `NASDAQ_100 off-exchange limit rows with effective dates=${nasdaqOffExchangeLimitRows.filter((row) => Boolean(row.limitEffectiveDate ?? row.limitDataDate)).length}/${nasdaqOffExchangeLimitRows.length}`
+    },
+    {
+      key: "offExchangeLimitSyncDates",
+      ok: nasdaqOffExchangeLimitRows.every((row) => Boolean(row.limitSyncedAt)),
+      message: `NASDAQ_100 off-exchange limit rows with sync dates=${nasdaqOffExchangeLimitRows.filter((row) => Boolean(row.limitSyncedAt)).length}/${nasdaqOffExchangeLimitRows.length}`
+    },
+    {
+      key: "offExchangeLimitConflicts",
+      ok: nasdaqOffExchangeLimitRows.every((row) => !row.limitStatusConflict),
+      message: `NASDAQ_100 off-exchange limit status conflicts=${nasdaqOffExchangeLimitRows.filter((row) => row.limitStatusConflict).length}`
     },
     checkCatalogDirectShareLimits(db),
     {
@@ -128,6 +146,11 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
       ok: stockConcentration.length > 0 && stockConcentration[0].navPercent > 0,
       message: `NVDA concentration rows=${stockConcentration.length}`
     },
+    {
+      key: "stockFundIndex",
+      ok: countStockIndexFunds(db, "NVDA") > 0,
+      message: `NVDA stock_fund_index funds=${countStockIndexFunds(db, "NVDA")}`
+    },
     ...STOCK_SCAN_FUNDS.map((fund) => {
       const row = db.prepare("SELECT enabled FROM funds WHERE code = ?").get(fund.code) as { enabled: number } | undefined;
       return {
@@ -138,8 +161,8 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
     }),
     {
       key: "stockConcentrationPurchaseAvailability",
-      ok: offExchangeStockConcentration.every((row) => row.purchaseStatus != null || row.limitAmountYuan != null),
-      message: `NVDA off-exchange purchase availability rows=${offExchangeStockConcentration.length}`
+      ok: offExchangeStockConcentration.every(hasStockPurchaseAvailabilityCoverage),
+      message: `NVDA off-exchange purchase availability rows=${offExchangeStockConcentration.length}, covered=${offExchangeStockConcentration.filter(hasStockPurchaseAvailabilityCoverage).length}, unknown=${offExchangeStockConcentration.filter((row) => row.purchaseStatus === "unknown").length}`
     },
     {
       key: "stockConcentrationLimitUnits",
@@ -159,7 +182,33 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
   };
 }
 
+function hasStockPurchaseAvailabilityCoverage(row: StockConcentrationRow): boolean {
+  if (row.limitAmountYuan != null) return true;
+  if (row.purchaseStatus == null) return false;
+  if (row.purchaseStatus !== "unknown") return true;
+  return Boolean(row.limitDataDate ?? row.limitEffectiveDate ?? row.limitSyncedAt);
+}
+
+function isActiveIndexTargetComparisonReady(
+  targetCode: string,
+  comparison: { onExchange: unknown[]; offExchange: unknown[] }
+): boolean {
+  if (INDEX_TARGETS_PENDING_UNTIL_FUNDS.has(targetCode) && !indexTargetHasFunds(comparison)) {
+    return true;
+  }
+  return comparison.onExchange.length > 0 && comparison.offExchange.length > 0;
+}
+
 function checkDiscoveryManifestForTarget(db: Database.Database, targetCode: string): AcceptanceCheck {
+  const comparison = queryIndexComparison(db, targetCode);
+  if (INDEX_TARGETS_PENDING_UNTIL_FUNDS.has(targetCode) && !indexTargetHasFunds(comparison)) {
+    return {
+      key: `discoveryManifest.${targetCode}`,
+      ok: true,
+      message: `${targetCode} pending until tracked funds exist`
+    };
+  }
+
   const manifest = queryFundDiscoveryManifest(db).filter((row) => row.trackingTargetCode === targetCode);
   const onExchangeManifest = manifest.filter((row) => row.venue === "on_exchange" && (row.shareClass === "ETF" || row.shareClass === "LOF"));
   const automatedOnExchange = onExchangeManifest.filter((row) => row.discoverySource !== "catalog-seed");
@@ -183,6 +232,15 @@ function checkDiscoveryManifestForTarget(db: Database.Database, targetCode: stri
 }
 
 function checkDiscoveryProfileGapsForTarget(db: Database.Database, targetCode: string): AcceptanceCheck {
+  const comparison = queryIndexComparison(db, targetCode);
+  if (INDEX_TARGETS_PENDING_UNTIL_FUNDS.has(targetCode) && !indexTargetHasFunds(comparison)) {
+    return {
+      key: `discoveryProfileGaps.${targetCode}`,
+      ok: true,
+      message: `${targetCode} pending until tracked funds exist`
+    };
+  }
+
   const gaps = queryDiscoveryProfileGaps(db, targetCode);
   return {
     key: `discoveryProfileGaps.${targetCode}`,

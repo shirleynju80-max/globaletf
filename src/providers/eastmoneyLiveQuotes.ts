@@ -1,7 +1,13 @@
 import { parseBeijingTimeMs, resolveIopvPremium, type IopvPoint } from "../domain/iopvAlignment";
-import { fetchFundEstimate } from "./eastmoneyIopv";
-import { eastMoneySecid } from "./eastmoneyOnExchangeQuotes";
-import { fetchWithTimeout, mapConcurrent } from "./requestUtils";
+import { calculateIopvPremiumDiscount } from "../domain/quotes";
+import { fetchFundReferenceEstimate } from "./fundReferenceEstimate";
+import {
+  fetchEastMoneyQuoteListMap,
+  iopvTimeFromQuoteSnapshot,
+  mergeQuoteListIopv,
+  parseEastMoneyQuoteListRows
+} from "./eastmoneyQuoteList";
+import { mapConcurrent } from "./requestUtils";
 
 export { parseBeijingTimeMs } from "../domain/iopvAlignment";
 
@@ -21,44 +27,13 @@ export interface LivePremiumRow {
   iopvSource: "current" | "trade_date_match" | "none";
 }
 
-const LIVE_PRICE_HOSTS = ["https://push2.eastmoney.com", "https://push2delay.eastmoney.com"];
-
 export function parseLivePrices(payload: unknown): Map<string, LivePrice> {
-  const rows = (payload as { data?: { diff?: Array<Record<string, unknown>> } }).data?.diff ?? [];
   const map = new Map<string, LivePrice>();
-  for (const row of rows) {
-    const code = String(row.f12 ?? "");
-    const price = Number(row.f2);
-    if (!code || !Number.isFinite(price) || price <= 0) continue;
-    const epochSec = Number(row.f124);
-    map.set(code, { price, priceTimeMs: Number.isFinite(epochSec) && epochSec > 0 ? epochSec * 1000 : null });
+  for (const row of parseEastMoneyQuoteListRows(payload)) {
+    if (row.lastPrice == null) continue;
+    map.set(row.fundCode, { price: row.lastPrice, priceTimeMs: row.priceTimeMs });
   }
   return map;
-}
-
-async function fetchLivePrices(fetchImpl: typeof fetch, codes: string[], timeoutMs?: number): Promise<Map<string, LivePrice>> {
-  if (codes.length === 0) return new Map();
-  const params = new URLSearchParams({
-    fltt: "2",
-    secids: codes.map((code) => eastMoneySecid(code)).join(","),
-    fields: "f12,f2,f124"
-  });
-  for (const host of LIVE_PRICE_HOSTS) {
-    try {
-      const response = await fetchWithTimeout(
-        fetchImpl,
-        `${host}/api/qt/ulist.np/get?${params.toString()}`,
-        { headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://quote.eastmoney.com/" } },
-        timeoutMs
-      );
-      if (!response.ok) continue;
-      const prices = parseLivePrices(await response.json());
-      if (prices.size > 0) return prices;
-    } catch {
-      continue;
-    }
-  }
-  return new Map();
 }
 
 export interface FetchLivePremiumsOptions {
@@ -73,17 +48,37 @@ export async function fetchLivePremiums(
   options: FetchLivePremiumsOptions = {}
 ): Promise<LivePremiumRow[]> {
   const timeoutMs = options.timeoutMs ?? 8000;
-  const priceMap = await fetchLivePrices(fetchImpl, codes, timeoutMs);
-  const estimates = await mapConcurrent(codes, 6, (code) => fetchFundEstimate(fetchImpl, code, timeoutMs));
+  const quoteListByCode = await fetchEastMoneyQuoteListMap(fetchImpl, codes, timeoutMs);
+  const fallbacks = await mapConcurrent(codes, 6, (code) => fetchFundReferenceEstimate(fetchImpl, code, timeoutMs));
 
   return codes.map((code, index) => {
-    const live = priceMap.get(code) ?? null;
-    const estimate = estimates[index];
+    const quoteRow = quoteListByCode.get(code) ?? null;
+    const tradeDate = options.tradeDateByCode?.get(code) ?? null;
+
+    // East Money app pairs f2 and f441 from the same quote-list snapshot — use directly.
+    if (quoteRow?.lastPrice != null && quoteRow.iopv != null) {
+      const iopvTime = iopvTimeFromQuoteSnapshot(quoteRow.priceTimeMs, tradeDate ?? undefined);
+      return {
+        fundCode: code,
+        price: quoteRow.lastPrice,
+        priceTime: quoteRow.priceTimeMs != null ? new Date(quoteRow.priceTimeMs).toISOString() : null,
+        iopv: quoteRow.iopv,
+        iopvTime,
+        iopvPremiumDiscountRate: calculateIopvPremiumDiscount(quoteRow.lastPrice, quoteRow.iopv),
+        aligned: true,
+        iopvSource: "current" as const
+      };
+    }
+
+    const livePrice = quoteRow?.lastPrice != null
+      ? { price: quoteRow.lastPrice, priceTimeMs: quoteRow.priceTimeMs }
+      : null;
+    const reference = mergeQuoteListIopv(quoteRow, fallbacks[index], tradeDate);
     const resolved = resolveIopvPremium({
-      price: live?.price ?? null,
-      priceTimeMs: live?.priceTimeMs ?? null,
-      tradeDate: options.tradeDateByCode?.get(code) ?? null,
-      current: estimate ? { iopv: estimate.iopv, iopvTime: estimate.iopvTime } : null,
+      price: livePrice?.price ?? null,
+      priceTimeMs: livePrice?.priceTimeMs ?? null,
+      tradeDate,
+      current: reference ? { iopv: reference.iopv, iopvTime: reference.iopvTime } : null,
       priorSnapshots: options.priorSnapshotsByCode?.get(code) ?? []
     });
     return {

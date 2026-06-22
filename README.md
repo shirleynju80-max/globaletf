@@ -1,60 +1,72 @@
-# ETF Limit
+# globaletf
 
-Local web tool for comparing mainland China funds that provide exposure to overseas indices and popular overseas stocks.
+Public web tool for comparing mainland China funds that track overseas indices and hold popular overseas stocks.
 
-## Commands
+**Current snapshot (features, KPIs, known limits): [docs/STATUS.md](./docs/STATUS.md)**（中文，2026-06-18）
 
-- `npm install`: install dependencies.
-- `npm run sync:daily`: write the latest available validated snapshots.
-- `npm run acceptance`: check whether the local snapshot passes the first MVP acceptance gate.
-- `npm run api`: start the local API at `http://127.0.0.1:8787`.
-- `npm run dev`: start the Vite UI at `http://127.0.0.1:5173`.
-- `npm test`: run unit and UI tests.
+| Route | Page |
+|-------|------|
+| `/` | Landing — previews + KPIs (`4+` indices, `600+` stocks) |
+| `/indices` | Index tracking — live premium/discount, limits, fees |
+| `/stocks` | Stock holdings concentration (quarterly reports) |
 
-## Data Freshness
-
-On-exchange ETF/LOF premium or discount is computed primarily against the real-time estimated reference NAV (IOPV / 实时估值). When the latest fundgz IOPV references a US close **newer** than the frozen A-share price (e.g. after A-shares close but before the next session), the tool **matches IOPV to the A-share trade date** (`gztime` at 04:00 Beijing on that session, reflecting the prior US close with timezone offset) instead of showing a misleading premium. The daily snapshot stores this matched IOPV; use the "实时刷新折溢价" button for on-demand live prices with the same logic.
-
-Fund coverage per index is discovered automatically (East Money fund-code universe + ETF screener + F10 tracking-index verification + agency-channel search + share-class family expansion). A slim structural catalog (`src/domain/fundCatalog.ts`) only pins direct-channel I/F shares and cross-listed LOF parent links; anchor seed codes bias name search but do not guarantee breadth.
-
-Off-exchange purchase limits are modeled by share class and sales channel (`channel_id` in SQLite). A/C use agency scope with union semantics (strictest limit wins across platforms; first row `eastmoney_aggregate`). I/F/E/Y/D/O use direct scope mapped to fund-company channels (e.g. Southern `nfjj` for 021000). Tracking index verification runs during live sync (`fund_tracking_profiles`) and is checked by acceptance.
-
-## Daily Scheduling
-
-Run the daily sync after mainland fund data is usually available, then run acceptance to catch stale or incomplete snapshots:
+## Local development
 
 ```sh
-cd /Users/shuke-xl/Documents/etflimit
-npm run sync:daily
-npm run acceptance
+npm install
+npm run dev:all       # API + UI together (recommended)
 ```
 
-Or use the bundled wrapper (appends to `logs/daily-sync.log`):
+Or run separately:
 
 ```sh
-chmod +x scripts/daily-sync.sh
-./scripts/daily-sync.sh
+npm run api          # API → http://127.0.0.1:8787
+npm run dev          # UI  → http://localhost:5173
 ```
-
-On macOS, install a user LaunchAgent from the example plist (edit `ABSOLUTE_PATH_TO_REPO` first):
 
 ```sh
-REPO="$(pwd)"
-sed "s|ABSOLUTE_PATH_TO_REPO|$REPO|g" scripts/com.etflimit.daily-sync.plist.example > ~/Library/LaunchAgents/com.etflimit.daily-sync.plist
-launchctl load ~/Library/LaunchAgents/com.etflimit.daily-sync.plist
+npm test             # unit + UI tests (270+)
+npm run build        # production UI → dist/
+npm run sync:daily   # refresh SQLite snapshot
+npm run acceptance   # MVP data gate
 ```
 
-The agent runs `./scripts/daily-sync.sh` at 08:30 on weekdays. Logs land in `logs/daily-sync.log` and `logs/launchd-daily-sync.*.log`.
+## Documentation
 
-On Linux or other cron-based environments, use a cron entry with the project directory as the working directory:
+Full docs index: **[docs/README.md](./docs/README.md)** · **状态收拢: [docs/STATUS.md](./docs/STATUS.md)**
 
-```cron
-30 8 * * 1-5 cd /Users/shuke-xl/Documents/etflimit && npm run sync:daily && npm run acceptance >> logs/daily-sync.log 2>&1
+| Topic | Doc |
+|-------|-----|
+| **Current state** | [docs/STATUS.md](./docs/STATUS.md) |
+| **Production deploy (Aliyun)** | [docs/DEPLOY-ALIYUN.md](./docs/DEPLOY-ALIYUN.md) |
+| Production deploy (CF + Fly) | [docs/DEPLOY.md](./docs/DEPLOY.md) |
+| Architecture & API list | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) |
+| Sync scheduling | [docs/DATA-SYNC.md](./docs/DATA-SYNC.md) |
+| WeChat mini-program later | [docs/MINIPROGRAM.md](./docs/MINIPROGRAM.md) |
+
+## Production
+
+| 方案 | 说明 |
+|------|------|
+| **[阿里云（推荐先跑通）](./docs/DEPLOY-ALIYUN.md)** | 香港轻量/ECS + Docker 单体，`docker-compose.aliyun.yml` |
+| [Option B — CF Pages + Fly](./docs/DEPLOY.md) | 静态站 + 独立 API |
+| [Monolith (option A)](#monolith-option-a) | 单机演示，`SERVE_STATIC=1` |
+
+## Monolith (option A)
+
+Single host for demos only — not ideal if you plan a mini-program:
+
+```sh
+npm run build
+SERVE_STATIC=1 HOST=0.0.0.0 PORT=8787 npm run api
+# or: docker build -t etflimit . && docker run -p 8787:8787 -v $(pwd)/data:/app/data etflimit
 ```
 
-The sync records per-area status for fund discovery, quotes, purchase limits, fees, and holdings. The UI status strip surfaces the provider, data date, row count, fallback state, error category, and last sync time.
+## Data freshness (summary)
 
-For provider-level troubleshooting, the local SQLite database also keeps:
+- On-exchange **实时折溢价**: `GET /api/live-premium/...` every **90s** on the index page; UI shows「更新中…」then「实时数据更新于 HH:MM:SS」.
+- Off-exchange limits/fees: daily `sync:daily` plus optional `sync:limits`; UI may POST `/api/sync-limits/...` while the page is open.
+- Stock weights: quarterly fund reports only — not live holdings.
+- Index tabs: **KOSPI** stays disabled until tracked funds exist in SQLite.
 
-- `sync_runs`: one row per daily sync run, with completed or failed status.
-- `provider_results`: each provider attempt by area, including success/failure, fetched time, data date, confidence, error category, message, and raw payload hash when available.
+Details: [docs/DATA-SYNC.md](./docs/DATA-SYNC.md).

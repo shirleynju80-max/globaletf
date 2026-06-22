@@ -1,5 +1,10 @@
-import type { ChannelScope, ShareClass } from "./types";
+import type { ChannelScope, Fund, ShareClass } from "./types";
 import { directChannelForCompany } from "./channels";
+
+/** Funds with OTC subscription limits on East Money F10 (off-exchange + cross-listed LOF). */
+export function isOtcPurchaseLimitFund(fund: Fund): boolean {
+  return fund.enabled && (fund.venue === "off_exchange" || fund.shareClass === "LOF");
+}
 
 export function defaultChannelScopeForShareClass(shareClass: ShareClass): ChannelScope {
   if (shareClass === "F" || shareClass === "I" || shareClass === "E" || shareClass === "Y" || shareClass === "D" || shareClass === "O") {

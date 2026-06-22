@@ -81,7 +81,7 @@ export function selectFundsForTargets(rows: FundSearchRow[], targets: TargetSele
 export async function fetchEastMoneyFundCodeRows(fetchImpl: typeof fetch = fetch): Promise<FundSearchRow[]> {
   const response = await fetchImpl(ENDPOINT, {
     headers: {
-      "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
+      "User-Agent": "Mozilla/5.0 globaletf/0.1",
       Referer: "https://fund.eastmoney.com/"
     }
   });
@@ -141,7 +141,7 @@ function matchesTarget(row: FundSearchRow, target: TargetSelection): boolean {
   });
 }
 
-const OVERSEAS_INDEX_TARGETS = new Set(["NASDAQ_100", "SP_500", "NIKKEI_225"]);
+const OVERSEAS_INDEX_TARGETS = new Set(["NASDAQ_100", "SP_500", "NIKKEI_225", "KOSPI"]);
 
 function isTargetRelevantRow(row: FundSearchRow, targetCode: string): boolean {
   const haystack = `${row.type} ${row.name}`;
@@ -150,8 +150,17 @@ function isTargetRelevantRow(row: FundSearchRow, targetCode: string): boolean {
   return true;
 }
 
-function isForeignCurrencyShare(name: string): boolean {
+export function isForeignCurrencyShare(name: string): boolean {
   return /美元|现汇|现钞/.test(name);
+}
+
+export async function fetchEastMoneyFundSuggestionsForQueries(
+  fetchImpl: typeof fetch,
+  queries: string[]
+): Promise<FundSearchRow[]> {
+  const uniqueQueries = [...new Set(queries.map((query) => query.trim()).filter(Boolean))];
+  const results = await Promise.all(uniqueQueries.map((query) => fetchSuggestionRowsForQuery(fetchImpl, query)));
+  return results.flat();
 }
 
 function toFund(row: FundSearchRow, targetCode: string): Fund | undefined {
@@ -195,7 +204,7 @@ async function fetchSuggestionRowsForQuery(fetchImpl: typeof fetch, query: strin
   try {
     const response = await fetchImpl(`${SUGGEST_ENDPOINT}?${params.toString()}`, {
       headers: {
-        "User-Agent": "Mozilla/5.0 ETFLimit/0.1",
+        "User-Agent": "Mozilla/5.0 globaletf/0.1",
         Referer: "https://fund.eastmoney.com/"
       }
     });

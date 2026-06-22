@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { parseDirectLimitFromAnnouncement, parseMoneyYuan, parsePurchaseStatus } from "./limitText";
+import { parseDirectLimitFromAnnouncement, parseMoneyYuan, parsePurchaseStatus, shouldPersistCompanyPageLimit } from "./limitText";
 
 describe("limitText", () => {
   it("parses purchase status keywords", () => {
     expect(parsePurchaseStatus("限大额")).toBe("limited");
     expect(parsePurchaseStatus("暂停申购")).toBe("suspended");
     expect(parsePurchaseStatus("开放申购")).toBe("open");
+  });
+
+  it("skips company-page rows with unknown status and no limit amount", () => {
+    expect(shouldPersistCompanyPageLimit("", "")).toBe(false);
+    expect(shouldPersistCompanyPageLimit("基金网上交易", "")).toBe(false);
+    expect(shouldPersistCompanyPageLimit("暂停申购", "")).toBe(true);
+    expect(shouldPersistCompanyPageLimit("", "2.00万元")).toBe(true);
   });
 
   it("parses yuan amounts with 万/亿 units", () => {

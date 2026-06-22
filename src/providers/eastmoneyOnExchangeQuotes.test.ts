@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Fund } from "../domain/types";
-import { createEastMoneyOnExchangeQuoteProvider, eastMoneySecid, parseEastMoneyKlineLatest, parseEastMoneyNavLatest, parseEastMoneySpotQuotes } from "./eastmoneyOnExchangeQuotes";
+import { createEastMoneyOnExchangeQuoteProvider, eastMoneySecid, parseEastMoneyKlineLatest, parseEastMoneyNavLatest, parseEastMoneySpotQuotes, safeFetchPreviousDayKline } from "./eastmoneyOnExchangeQuotes";
 
 const onExchangeFunds: Fund[] = [
   { code: "159513", name: "纳斯达克100ETF大成", fundType: "指数型-海外股票", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true },
@@ -61,10 +61,9 @@ describe("East Money on-exchange quote parser", () => {
   });
 
   it("parses spot previous close quotes as a fallback", () => {
-    expect(parseEastMoneySpotQuotes(spotPayload, "2026-06-10")).toEqual([
-      { fundCode: "159513", closePrice: 1.802, turnover: 108316295.612, tradeDate: "2026-06-09" },
-      { fundCode: "513390", closePrice: 2.422, turnover: 64897873, tradeDate: "2026-06-09" }
-    ]);
+    const rows = parseEastMoneySpotQuotes(spotPayload, "2026-06-10");
+    expect(rows[0]).toMatchObject({ fundCode: "159513", closePrice: 1.802, turnover: 108316295.612, tradeDate: "2026-06-09" });
+    expect(rows[1]).toMatchObject({ fundCode: "513390", closePrice: 2.422, turnover: 64897873, tradeDate: "2026-06-09" });
   });
 });
 
@@ -93,6 +92,44 @@ const klineJson = JSON.stringify(klinePayload);
 const spotJson = JSON.stringify(spotPayload);
 const iopvPayload = `jsonpgz({"fundcode":"159513","jzrq":"2026-06-08","dwjz":"1.2000","gsz":"1.1500","gszzl":"0.5","gztime":"2026-06-10 04:00"});`;
 
+describe("East Money previous-day kline fetch", () => {
+  it("retries the primary kline host after a transient failure", async () => {
+    let klineCalls = 0;
+    const fetchImpl = vi.fn(async (url: Parameters<typeof fetch>[0]) => {
+      if (String(url).includes("stock/kline")) {
+        klineCalls += 1;
+        if (klineCalls < 2) return new Response("error", { status: 502 });
+        return respond(klineJson);
+      }
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const row = await safeFetchPreviousDayKline(fetchImpl, "159513", "2026-06-10", 5_000);
+
+    expect(row).toMatchObject({ closePrice: 1.23, turnover: 56000000, tradeDate: "2026-06-09" });
+    expect(klineCalls).toBe(2);
+  });
+
+  it("falls back to an alternate kline host after primary retries fail", async () => {
+    const fetchMock = vi.fn(async (url: Parameters<typeof fetch>[0]) => {
+      const target = String(url);
+      if (target.includes("stock/kline") && target.startsWith("https://push2his.eastmoney.com")) {
+        return new Response("error", { status: 502 });
+      }
+      if (target.includes("stock/kline") && target.startsWith("http://push2his.eastmoney.com")) {
+        return respond(klineJson);
+      }
+      return new Response("not found", { status: 404 });
+    });
+    const fetchImpl = fetchMock as unknown as typeof fetch;
+
+    const row = await safeFetchPreviousDayKline(fetchImpl, "159513", "2026-06-10", 5_000);
+
+    expect(row).toMatchObject({ closePrice: 1.23, turnover: 56000000, tradeDate: "2026-06-09" });
+    expect(fetchMock.mock.calls.some((call) => String(call[0]).startsWith("http://push2his.eastmoney.com"))).toBe(true);
+  });
+});
+
 describe("East Money on-exchange quote provider", () => {
   it("fetches kline and same-date NAV to calculate previous-close premium", async () => {
     const fetchImpl = routeFetch({ kline: klineJson, nav: navPayload });
@@ -119,7 +156,28 @@ describe("East Money on-exchange quote provider", () => {
     expect(result.data[0].closingPremiumDiscountRate).toBeCloseTo(0.025);
   });
 
-  it("computes the IOPV premium against the real-time estimate", async () => {
+  it("computes the IOPV premium against quote-list f441 when available", async () => {
+    const spotWithIopv = JSON.stringify({
+      data: {
+        diff: [{ f12: "159513", f2: 1.23, f18: 1.2, f441: 1.15, f124: Math.floor(Date.UTC(2026, 5, 9, 7, 0) / 1000) }]
+      }
+    });
+    const fetchImpl = routeFetch({ kline: klineJson, nav: navPayload, spot: spotWithIopv });
+    const provider = createEastMoneyOnExchangeQuoteProvider([onExchangeFunds[0]], {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      dataDate: "2026-06-10",
+      syncRunId: "run-1"
+    });
+
+    const result = await provider.fetch();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.data[0].iopv).toBe(1.15);
+    expect(result.data[0].iopvPremiumDiscountRate).toBeCloseTo(0.0696, 3);
+  });
+
+  it("computes the IOPV premium against fundgz when f441 is missing", async () => {
     const fetchImpl = routeFetch({ kline: klineJson, nav: navPayload, estimate: iopvPayload });
     const provider = createEastMoneyOnExchangeQuoteProvider([onExchangeFunds[0]], {
       fetchImpl: fetchImpl as unknown as typeof fetch,
@@ -197,7 +255,10 @@ describe("East Money on-exchange quote provider", () => {
     if (!result.ok) return;
     expect(result.data).toHaveLength(2);
     expect(result.data.find((row) => row.fundCode === "159513")?.source).toBe("eastmoney-on-exchange-quote");
-    expect(result.data.find((row) => row.fundCode === "513390")?.source).toBe("eastmoney-on-exchange-spot");
+    expect(result.data.find((row) => row.fundCode === "513390")).toMatchObject({
+      source: "eastmoney-on-exchange-spot",
+      turnover: undefined
+    });
     expect(result.source).toBe("eastmoney-on-exchange-quote+eastmoney-on-exchange-spot");
   });
 
@@ -223,7 +284,7 @@ describe("East Money on-exchange quote provider", () => {
     expect(result.data[0]).toMatchObject({
       fundCode: "159513",
       closePrice: 1.802,
-      turnover: 108316295.612,
+      turnover: undefined,
       tradeDate: "2026-06-09",
       source: "eastmoney-on-exchange-spot"
     });

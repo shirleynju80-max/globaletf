@@ -1,3 +1,5 @@
+import type { ProductVenue } from "../domain/types";
+
 export type ProviderErrorCategory =
   | "network"
   | "http"
@@ -15,7 +17,7 @@ export type ProviderFetchResult<T> =
       dataDate: string;
       confidence: number;
       rawPayloadHash?: string;
-      discoveryProfileGaps?: Array<{ targetCode: string; fundCode: string; venue: string }>;
+      discoveryProfileGaps?: Array<{ targetCode: string; fundCode: string; venue: ProductVenue }>;
     }
   | {
       ok: false;

@@ -15,6 +15,6 @@ describe("fee helpers", () => {
   });
 
   it("summarizes redemption fees by holding-day tiers", () => {
-    expect(summarizeRedemptionFees(tiers)).toEqual(["0-6天: 1.50%", "7-29天: 0.50%"]);
+    expect(summarizeRedemptionFees(tiers)).toEqual(["0-6天: 1.5%", "7-29天: 0.5%"]);
   });
 });

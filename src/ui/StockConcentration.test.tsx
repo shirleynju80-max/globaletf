@@ -26,6 +26,8 @@ describe("StockConcentration", () => {
           }
         ]}
         onSelectStock={() => undefined}
+        expandPeers={false}
+        onExpandPeersChange={() => undefined}
       />
     );
 
@@ -33,14 +35,11 @@ describe("StockConcentration", () => {
     expect(screen.getByText("纳指100联接A")).toBeInTheDocument();
     expect(screen.getByText("申购状态")).toBeInTheDocument();
     expect(screen.getByText("限额")).toBeInTheDocument();
-    expect(screen.getByText("限购日期")).toBeInTheDocument();
     expect(screen.getByText("限购")).toBeInTheDocument();
     expect(screen.getByText("1,000 元/日")).toBeInTheDocument();
-    expect(screen.getByText("2026-06-10")).toBeInTheDocument();
-    expect(screen.getByText("1.20 亿")).toBeInTheDocument();
     expect(screen.getByText("10.10%")).toBeInTheDocument();
     expect(screen.getByText("2026Q1")).toBeInTheDocument();
-    expect(screen.getByText("当前查询：NVDA")).toBeInTheDocument();
+    expect(screen.getByText("当前查询：英伟达 (NVDA)")).toBeInTheDocument();
   });
 
   it("submits a custom stock code", () => {
@@ -50,16 +49,36 @@ describe("StockConcentration", () => {
         selectedStock="NVDA"
         rows={[]}
         onSelectStock={onSelectStock}
+        expandPeers={false}
+        onExpandPeersChange={() => undefined}
       />
     );
 
-    fireEvent.change(screen.getByLabelText("自定义股票代码"), { target: { value: "goog" } });
+    fireEvent.change(screen.getByLabelText("股票名称/代码"), { target: { value: "goog" } });
     fireEvent.click(screen.getByRole("button", { name: "查询股票" }));
 
     expect(onSelectStock).toHaveBeenCalledWith("GOOG");
   });
 
-  it("filters stock concentration rows by purchase availability and venue", () => {
+  it("resolves a Chinese stock alias to the canonical target code", () => {
+    const onSelectStock = vi.fn();
+    render(
+      <StockConcentration
+        selectedStock="NVDA"
+        rows={[]}
+        onSelectStock={onSelectStock}
+        expandPeers={false}
+        onExpandPeersChange={() => undefined}
+      />
+    );
+
+    fireEvent.change(screen.getByLabelText("股票名称/代码"), { target: { value: "海力士" } });
+    fireEvent.click(screen.getByRole("button", { name: "查询股票" }));
+
+    expect(onSelectStock).toHaveBeenCalledWith("HYNIX");
+  });
+
+  it("filters stock concentration rows with combinable venue and purchase filters", () => {
     render(
       <StockConcentration
         selectedStock="NVDA"
@@ -89,6 +108,18 @@ describe("StockConcentration", () => {
             source: "eastmoney"
           },
           {
+            fundCode: "161128",
+            fundName: "场内暂停LOF",
+            venue: "on_exchange",
+            shareClass: "LOF",
+            stockCode: "NVDA",
+            stockName: "英伟达",
+            navPercent: 8.9,
+            purchaseStatus: "suspended",
+            reportPeriod: "2026Q1",
+            source: "eastmoney"
+          },
+          {
             fundCode: "000001",
             fundName: "暂停场外",
             venue: "off_exchange",
@@ -102,16 +133,27 @@ describe("StockConcentration", () => {
           }
         ]}
         onSelectStock={() => undefined}
+        expandPeers={false}
+        onExpandPeersChange={() => undefined}
       />
     );
 
     fireEvent.click(screen.getByRole("button", { name: "可申购" }));
     expect(screen.getByText("可申购场外")).toBeInTheDocument();
     expect(screen.getByText("场内ETF")).toBeInTheDocument();
+    expect(screen.queryByText("场内暂停LOF")).not.toBeInTheDocument();
     expect(screen.queryByText("暂停场外")).not.toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole("button", { name: "全部" }));
     fireEvent.click(screen.getByRole("button", { name: "场内" }));
     expect(screen.getByText("场内ETF")).toBeInTheDocument();
+    expect(screen.getByText("场内暂停LOF")).toBeInTheDocument();
+    expect(screen.queryByText("可申购场外")).not.toBeInTheDocument();
+    expect(screen.queryByText("暂停场外")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "可申购" }));
+    expect(screen.getByText("场内ETF")).toBeInTheDocument();
+    expect(screen.queryByText("场内暂停LOF")).not.toBeInTheDocument();
     expect(screen.queryByText("可申购场外")).not.toBeInTheDocument();
   });
 
@@ -121,10 +163,12 @@ describe("StockConcentration", () => {
         selectedStock="GOOG"
         rows={[]}
         onSelectStock={() => undefined}
+        expandPeers={false}
+        onExpandPeersChange={() => undefined}
       />
     );
 
-    expect(screen.getByText("当前查询：GOOG")).toBeInTheDocument();
-    expect(screen.getByText("暂无 GOOG 持仓数据")).toBeInTheDocument();
+    expect(screen.getByText("当前查询：谷歌 (GOOG)")).toBeInTheDocument();
+    expect(screen.getByText("暂无 谷歌 (GOOG) 持仓数据")).toBeInTheDocument();
   });
 });

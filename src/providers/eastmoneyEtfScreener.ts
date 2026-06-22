@@ -73,7 +73,7 @@ export async function fetchAllEastMoneyEtfScreenerRows(options: FetchAllOptions 
     const response = await fetchWithTimeout(
       fetchImpl,
       `${CLIST_ENDPOINT}?${params.toString()}`,
-      { headers: { "User-Agent": "Mozilla/5.0 ETFLimit/0.1", Referer: "https://quote.eastmoney.com/" } },
+      { headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://quote.eastmoney.com/" } },
       timeoutMs
     );
     if (!response.ok) break;

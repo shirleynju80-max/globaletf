@@ -4,12 +4,14 @@ import { INDEX_TARGET_FUND_SEED_FUNDS, INDEX_TARGET_FUND_SEEDS, STOCK_TARGETS, T
 describe("targets", () => {
   it("contains the first release overseas index targets", () => {
     expect(TARGETS.map((target) => target.code)).toEqual(
-      expect.arrayContaining(["NASDAQ_100", "SP_500", "NIKKEI_225", "HSTECH"])
+      expect.arrayContaining(["NASDAQ_100", "SP_500", "NIKKEI_225", "HSTECH", "KOSPI"])
     );
   });
 
   it("contains the first release popular stock targets", () => {
-    expect(STOCK_TARGETS.map((target) => target.code)).toEqual(["NVDA", "AAPL", "MSFT", "TSLA", "META"]);
+    expect(STOCK_TARGETS.map((target) => target.code)).toEqual([
+      "NVDA", "AAPL", "GOOG", "MU", "AVGO", "AMD", "TSM", "HYNIX"
+    ]);
   });
 
   it("finds targets by code and alias", () => {

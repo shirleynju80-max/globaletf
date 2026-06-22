@@ -24,10 +24,9 @@ describe("fetchLivePremiums", () => {
     const fetchImpl = vi.fn(async (url: Parameters<typeof fetch>[0]) => {
       const u = String(url);
       if (u.includes("ulist.np")) {
-        return new Response(JSON.stringify({ data: { diff: [{ f12: "159632", f2: 2.458, f124: Math.floor(priceTimeMs / 1000) }] } }), { status: 200 });
-      }
-      if (u.includes("fundgz.1234567.com.cn")) {
-        return new Response(`jsonpgz({"fundcode":"159632","jzrq":"2026-06-11","dwjz":"2.2733","gsz":"2.2866","gszzl":"0.5","gztime":"2026-06-13 04:00"});`, { status: 200 });
+        return new Response(JSON.stringify({
+          data: { diff: [{ f12: "159632", f2: 2.458, f441: 2.2866, f124: Math.floor(priceTimeMs / 1000) }] }
+        }), { status: 200 });
       }
       return new Response("not found", { status: 404 });
     }) as unknown as typeof fetch;
@@ -35,11 +34,12 @@ describe("fetchLivePremiums", () => {
     const rows = await fetchLivePremiums(fetchImpl, ["159632"]);
     expect(rows[0].price).toBe(2.458);
     expect(rows[0].iopv).toBe(2.2866);
+    expect(rows[0].iopvPremiumDiscountRate).toBeCloseTo((2.458 - 2.2866) / 2.2866, 4);
     expect(rows[0].aligned).toBe(true);
     expect(rows[0].iopvSource).toBe("current");
   });
 
-  it("falls back to prior snapshot IOPV when current estimate is newer than the price", async () => {
+  it("falls back to prior snapshot IOPV when f441 is missing and fundgz is newer than the price", async () => {
     const priceTimeMs = Date.UTC(2026, 5, 12, 7, 0);
     const fetchImpl = vi.fn(async (url: Parameters<typeof fetch>[0]) => {
       const u = String(url);
@@ -68,5 +68,21 @@ describe("fetchLivePremiums", () => {
     const rows = await fetchLivePremiums(fetchImpl, ["159632"]);
     expect(rows[0].price).toBeNull();
     expect(rows[0].iopvPremiumDiscountRate).toBeNull();
+  });
+
+  it("matches East Money app premium for 159659-style quote list rows", async () => {
+    const fetchImpl = vi.fn(async (url: Parameters<typeof fetch>[0]) => {
+      if (String(url).includes("ulist.np")) {
+        return new Response(JSON.stringify({
+          data: { diff: [{ f12: "159659", f2: 2.399, f18: 2.367, f441: 2.2354, f124: 1781594868 }] }
+        }), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const rows = await fetchLivePremiums(fetchImpl, ["159659"]);
+    expect(rows[0].price).toBe(2.399);
+    expect(rows[0].iopv).toBe(2.2354);
+    expect(rows[0].iopvPremiumDiscountRate).toBeCloseTo(0.0732, 4);
   });
 });
