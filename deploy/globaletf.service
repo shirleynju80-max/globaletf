@@ -7,7 +7,7 @@ Type=simple
 WorkingDirectory=/opt/globaletf
 Environment=NODE_ENV=production
 Environment=HOST=0.0.0.0
-Environment=PORT=80
+Environment=PORT=8787
 Environment=SERVE_STATIC=1
 Environment=STATIC_ROOT=/opt/globaletf/dist
 Environment=DATABASE_PATH=/opt/globaletf/data/etflimit.sqlite

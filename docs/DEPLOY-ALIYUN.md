@@ -6,30 +6,60 @@
 ## 架构
 
 ```
-浏览器 → http://<公网IP>/   （轻量服务器用 **80** 端口，见下文）
+浏览器 → https://globaletf.store
+              ↓
+         Nginx（80/443）→ 127.0.0.1:8787
               ↓
          systemd → npm run start:api（SERVE_STATIC=1）
-         ├─ /          dist/ 静态网页
-         └─ /api/*     Express + data/etflimit.sqlite
 ```
 
-同机同端口，构建时 **不需要** `VITE_API_BASE`。
+同域访问 API，构建时 **不需要** `VITE_API_BASE`。
 
 ---
 
-## 当前生产状态（8.147.67.18）
+## 当前生产
 
-| 项 | 状态 |
-|----|------|
-| 代码路径 | `/opt/globaletf` |
-| 服务 | `globaletf.service` **active** |
-| 本机健康检查 | `curl http://127.0.0.1:8787/api/health` → `{"ok":true}` |
-| 数据库 | `data/etflimit.sqlite` ~1.3MB，已跑过 `sync:daily` |
-| 验收 | `npm run acceptance` **PASS** |
-| 定时任务 | crontab 工作日 08:30 / 12:00 / 15:30 |
-| **外网访问** | **http://8.147.67.18/**（端口 **80**，已通） |
+| 项 | 值 |
+|----|-----|
+| 域名 | **globaletf.store**（DNS 生效后） |
+| 服务器 IP | `8.147.67.18` |
+| 应用 | `globaletf.service` → `:8787` |
+| 反代 | Nginx vhost `/www/server/panel/vhost/nginx/globaletf.conf` |
+| 临时访问 | http://8.147.67.18/（IP 直连） |
 
-> 轻量服务器防火墙里 **8787 自定义规则可能不生效**；**80** 默认可用。生产已改 `PORT=80`。
+---
+
+## 域名 globaletf.store
+
+### 1. DNS（域名控制台）
+
+| 主机记录 | 类型 | 记录值 |
+|----------|------|--------|
+| `@` | A | `8.147.67.18` |
+| `www` | A 或 CNAME | `8.147.67.18` 或 `globaletf.store` |
+
+生效验证（Mac）：
+
+```sh
+nslookup globaletf.store
+curl http://globaletf.store/api/health
+```
+
+### 2. 阿里云防火墙
+
+放行 **80**、**443**（HTTPS 证书需要 443）。
+
+### 3. HTTPS（DNS 生效后在服务器执行）
+
+```sh
+CERTBOT_EMAIL=你的邮箱@example.com bash /opt/globaletf/scripts/aliyun-enable-https.sh
+```
+
+或宝塔面板 → 网站 → 添加站点 `globaletf.store` → **Let's Encrypt** 申请证书。
+
+### 4. 备案说明
+
+`.store` 域名 + 大陆乌兰察布机房：**若面向大陆用户，通常需要 ICP 备案**。未备案时可能面临访问限制；香港机房可免备案但延迟不同。
 
 ---
 
