@@ -3,7 +3,8 @@
 | 文档 | 内容 |
 |------|------|
 | **[STATUS.md](./STATUS.md)** | 当前功能、标的、本地开发、下一步 |
-| **[DEPLOY-ALIYUN.md](./DEPLOY-ALIYUN.md)** | **推荐** — 轻量/ECS + systemd 裸机（免 Docker Hub） |
+| **[DEPLOY-PAGES.md](./DEPLOY-PAGES.md)** | **备案期间** — Cloudflare Pages + API 代理 |
+| **[DEPLOY-ALIYUN.md](./DEPLOY-ALIYUN.md)** | 阿里云 systemd 裸机（备案通过后域名） |
 | [DEPLOY.md](./DEPLOY.md) | Cloudflare Pages + Fly.io API（前后端分离） |
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | 架构、`/api` 路由、外部数据源 |
 | [DATA-SYNC.md](./DATA-SYNC.md) | 同步命令、acceptance、定时任务 |

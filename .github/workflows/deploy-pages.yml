@@ -2,7 +2,7 @@ name: Deploy Pages
 
 on:
   push:
-    branches: ["main", "feat/stock-holdings-discovery"]
+    branches: ["main"]
   workflow_dispatch:
 
 jobs:
@@ -19,11 +19,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run build
-        env:
-          VITE_API_BASE: ${{ vars.VITE_API_BASE || secrets.VITE_API_BASE }}
       - name: Deploy to Cloudflare Pages
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: pages deploy dist --project-name=globaletf
+          wranglerVersion: "3"
