@@ -1,72 +1,51 @@
 # globaletf
 
-Public web tool for comparing mainland China funds that track overseas indices and hold popular overseas stocks.
+跨境基金公开数据工具：同指数产品对比 + 季报持仓浓度。
 
-**Current snapshot (features, KPIs, known limits): [docs/STATUS.md](./docs/STATUS.md)**（中文，2026-06-18）
+| 路由 | 页面 |
+|------|------|
+| `/` | 首页 |
+| `/indices` | 指数跟踪（实时折溢价、场外限购/费率） |
+| `/stocks` | 股票持仓（季报披露权重） |
 
-| Route | Page |
-|-------|------|
-| `/` | Landing — previews + KPIs (`4+` indices, `600+` stocks) |
-| `/indices` | Index tracking — live premium/discount, limits, fees |
-| `/stocks` | Stock holdings concentration (quarterly reports) |
+详细状态见 **[docs/STATUS.md](./docs/STATUS.md)**。
 
-## Local development
+## 本地开发
 
 ```sh
 npm install
-npm run dev:all       # API + UI together (recommended)
+npm run dev:all       # 推荐：API + 前端
 ```
 
-Or run separately:
-
-```sh
-npm run api          # API → http://127.0.0.1:8787
-npm run dev          # UI  → http://localhost:5173
-```
-
-```sh
-npm test             # unit + UI tests (270+)
-npm run build        # production UI → dist/
-npm run sync:daily   # refresh SQLite snapshot
-npm run acceptance   # MVP data gate
-```
-
-## Documentation
-
-Full docs index: **[docs/README.md](./docs/README.md)** · **状态收拢: [docs/STATUS.md](./docs/STATUS.md)**
-
-| Topic | Doc |
-|-------|-----|
-| **Current state** | [docs/STATUS.md](./docs/STATUS.md) |
-| **Production deploy (Aliyun)** | [docs/DEPLOY-ALIYUN.md](./docs/DEPLOY-ALIYUN.md) |
-| Production deploy (CF + Fly) | [docs/DEPLOY.md](./docs/DEPLOY.md) |
-| Architecture & API list | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) |
-| Sync scheduling | [docs/DATA-SYNC.md](./docs/DATA-SYNC.md) |
-| WeChat mini-program later | [docs/MINIPROGRAM.md](./docs/MINIPROGRAM.md) |
-
-## Production
-
-| 方案 | 说明 |
+| 服务 | 地址 |
 |------|------|
-| **[阿里云（推荐先跑通）](./docs/DEPLOY-ALIYUN.md)** | 香港轻量/ECS + Docker 单体，`docker-compose.aliyun.yml` |
-| [Option B — CF Pages + Fly](./docs/DEPLOY.md) | 静态站 + 独立 API |
-| [Monolith (option A)](#monolith-option-a) | 单机演示，`SERVE_STATIC=1` |
+| API | http://127.0.0.1:8787 |
+| 前端 | http://localhost:5173/ |
 
-## Monolith (option A)
+```sh
+npm test              # 274 tests
+npm run build
+npm run sync:daily
+npm run acceptance
+```
 
-Single host for demos only — not ideal if you plan a mini-program:
+## 文档
+
+**[docs/README.md](./docs/README.md)** — 完整索引
+
+| 主题 | 文档 |
+|------|------|
+| 当前状态 | [docs/STATUS.md](./docs/STATUS.md) |
+| 上线（推荐） | [docs/DEPLOY-ALIYUN.md](./docs/DEPLOY-ALIYUN.md) |
+| 上线（CF + Fly） | [docs/DEPLOY.md](./docs/DEPLOY.md) |
+| 架构 | [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) |
+| 数据同步 | [docs/DATA-SYNC.md](./docs/DATA-SYNC.md) |
+
+## 本地单体演示
 
 ```sh
 npm run build
 SERVE_STATIC=1 HOST=0.0.0.0 PORT=8787 npm run api
-# or: docker build -t etflimit . && docker run -p 8787:8787 -v $(pwd)/data:/app/data etflimit
 ```
 
-## Data freshness (summary)
-
-- On-exchange **实时折溢价**: `GET /api/live-premium/...` every **90s** on the index page; UI shows「更新中…」then「实时数据更新于 HH:MM:SS」.
-- Off-exchange limits/fees: daily `sync:daily` plus optional `sync:limits`; UI may POST `/api/sync-limits/...` while the page is open.
-- Stock weights: quarterly fund reports only — not live holdings.
-- Index tabs: **KOSPI** stays disabled until tracked funds exist in SQLite.
-
-Details: [docs/DATA-SYNC.md](./docs/DATA-SYNC.md).
+生产环境请用 [阿里云 Docker](./docs/DEPLOY-ALIYUN.md) 或 [CF + Fly](./docs/DEPLOY.md)。
