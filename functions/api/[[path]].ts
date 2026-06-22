@@ -1,18 +1,17 @@
-import { buildApiProxyTarget } from "./proxy";
+import { buildApiProxyConfig, buildOriginFetchUrl } from "./proxy";
 
-const DEFAULT_API_ORIGIN = "http://8.147.67.18";
-
-export const onRequest: PagesFunction<{ API_ORIGIN?: string }> = async (context) => {
-  const origin = context.env.API_ORIGIN ?? DEFAULT_API_ORIGIN;
-  const targetUrl = buildApiProxyTarget(origin, new URL(context.request.url), context.params.path);
+export const onRequest: PagesFunction<{ API_RESOLVE_IP?: string; API_ORIGIN_HOST?: string; API_ORIGIN?: string }> = async (context) => {
+  const config = buildApiProxyConfig(new URL(context.request.url), context.params.path, context.env);
+  const targetUrl = buildOriginFetchUrl(config);
 
   const headers = new Headers(context.request.headers);
-  headers.delete("host");
+  headers.set("host", config.originHost);
 
-  const init: RequestInit = {
+  const init: RequestInit & { cf?: { resolveOverride: string } } = {
     method: context.request.method,
     headers,
-    redirect: "manual"
+    redirect: "manual",
+    cf: { resolveOverride: config.resolveIp }
   };
   if (context.request.method !== "GET" && context.request.method !== "HEAD") {
     init.body = context.request.body;

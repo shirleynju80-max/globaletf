@@ -29,13 +29,14 @@
    | Build output | `dist` |
    | Root | `/` |
 
-3. **Environment variables**（Production）
+3. **Environment variables**（Production，可选 — 代码里已有默认 IP）
 
    | Name | Value |
    |------|--------|
-   | `API_ORIGIN` | `http://8.147.67.18` |
+   | `API_RESOLVE_IP` | `8.147.67.18` |
+   | `API_ORIGIN_HOST` | `8.147.67.18` |
 
-   > `functions/api/[[path]].ts` 读取此变量；`wrangler.toml` 中亦有默认值。
+   > 不要用 `API_ORIGIN=http://IP`（Cloudflare 会报 **1003**）。代理通过 `resolveOverride` 连大陆服务器。
 
 4. **不要** 设置 `VITE_API_BASE`（留空 = 同域 `/api`）。
 

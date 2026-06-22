@@ -3,4 +3,5 @@ compatibility_date = "2024-06-01"
 pages_build_output_dir = "dist"
 
 [vars]
-API_ORIGIN = "http://8.147.67.18"
+API_RESOLVE_IP = "8.147.67.18"
+API_ORIGIN_HOST = "8.147.67.18"
