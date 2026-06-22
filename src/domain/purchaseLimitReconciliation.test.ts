@@ -76,7 +76,63 @@ describe("purchaseLimitReconciliation", () => {
       status: "suspended",
       limitAmountYuan: undefined,
       limitEffectiveDate: "2026-06-16",
-      statusConflict: true
+      statusConflict: false
+    });
+  });
+
+  it("does not flag agency vs direct status mismatch as conflict for direct share classes", () => {
+    const reconciled = reconcilePurchaseLimit("E", [
+      baseLimit({
+        shareClass: "E",
+        channelScope: "direct",
+        channelId: "direct_aggregate",
+        source: "fundco-announcement-direct_aggregate",
+        status: "suspended",
+        dataDate: "2026-04-17",
+        limitAmountYuan: undefined
+      }),
+      baseLimit({
+        shareClass: "E",
+        channelScope: "agency",
+        channelId: "eastmoney_aggregate",
+        source: "tiantian-f10-jjfl",
+        status: "limited",
+        dataDate: "2026-06-22",
+        limitAmountYuan: 100,
+        confidence: 0.9
+      })
+    ]);
+
+    expect(reconciled.status).toBe("suspended");
+    expect(reconciled.statusConflict).toBe(false);
+  });
+
+  it("ignores other share classes when reconciling a fund code bucket", () => {
+    const reconciled = reconcilePurchaseLimit("A", [
+      baseLimit({
+        shareClass: "A",
+        channelScope: "agency",
+        channelId: "eastmoney_aggregate",
+        source: "tiantian-f10-jjfl",
+        status: "suspended",
+        dataDate: "2026-06-22",
+        limitAmountYuan: 100
+      }),
+      baseLimit({
+        shareClass: "C",
+        channelScope: "agency",
+        channelId: "aggregate",
+        source: "tiantian",
+        status: "limited",
+        dataDate: "2026-06-09",
+        limitAmountYuan: 1000
+      })
+    ]);
+
+    expect(reconciled).toMatchObject({
+      status: "suspended",
+      limitAmountYuan: undefined,
+      statusConflict: false
     });
   });
 

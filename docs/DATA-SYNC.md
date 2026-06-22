@@ -65,6 +65,25 @@ npm run acceptance
 
 Checks Nasdaq coverage, limits, fees, holdings surfaces, and sync audit tables. Run after deploy seed and after major sync changes.
 
+## Health check and alerts
+
+```sh
+npm run health-check
+```
+
+Runs `acceptance` and fails if any `sync_status` row has `status = error`. Logs to `logs/health-check.log`.
+
+Optional notification when the check fails:
+
+```sh
+NOTIFY_WEBHOOK_URL=https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...
+NOTIFY_WEBHOOK_FORMAT=wecom npm run health-check
+```
+
+Recommended after morning `sync:daily` (see [DEPLOY-ALIYUN.md](./DEPLOY-ALIYUN.md) cron example).
+
+Web UI: **`/status`** shows `sync_status` for each data area (no push alerts).
+
 ## Troubleshooting tables
 
 SQLite keeps audit rows:

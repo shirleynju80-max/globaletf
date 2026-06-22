@@ -3,4 +3,4 @@ export function navigateTo(path: string): void {
   window.dispatchEvent(new PopStateEvent("popstate"));
 }
 
-export type SiteSection = "home" | "indices" | "stocks";
+export type SiteSection = "home" | "indices" | "stocks" | "status";

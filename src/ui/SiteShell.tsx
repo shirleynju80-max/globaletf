@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { SITE_NAME, SITE_TAGLINE } from "../lib/brand";
+import { navigateTo } from "../lib/navigation";
 import { SiteNav } from "./SiteNav";
 import type { SiteSection } from "../lib/navigation";
 
@@ -26,7 +27,10 @@ export function SiteShell({ active, eyebrow, title, lead, children }: Props) {
       </main>
       <footer className="landing-footer">
         <p>{SITE_NAME} · {SITE_TAGLINE}</p>
-        <p className="landing-footer-muted">数据来自公开渠道，不构成投资建议</p>
+        <p className="landing-footer-muted">
+          <a href="/status" onClick={(event) => { event.preventDefault(); navigateTo("/status"); }}>数据状态</a>
+          {" · "}数据来自公开渠道，不构成投资建议
+        </p>
       </footer>
     </div>
   );

@@ -368,7 +368,33 @@ describe("repositories", () => {
       limitAmountYuan: undefined,
       limitEffectiveDate: "2026-06-16",
       limitSyncedAt: "2026-06-16",
-      limitStatusConflict: true
+      limitStatusConflict: false
+    });
+  });
+
+  it("does not flag mixed share-class limit rows as conflicts for the displayed share class", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "016532", name: "嘉实纳斯达克100ETF发起联接(QDII)A人民币", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "A", enabled: true }
+      ],
+      quotes: [],
+      limits: [
+        { fundCode: "016532", shareClass: "A", status: "suspended", limitAmountYuan: 100, limitUnit: "per_day", channelScope: "agency", channelId: "eastmoney_aggregate", source: "tiantian-f10-jjfl", dataDate: "2026-06-22", confidence: 0.9, syncRunId: "run-1" },
+        { fundCode: "016532", shareClass: "C", status: "limited", limitAmountYuan: 1000, limitUnit: "per_day", channelScope: "agency", channelId: "aggregate", source: "tiantian", dataDate: "2026-06-09", confidence: 0.9, syncRunId: "run-1" }
+      ],
+      fees: [],
+      holdings: []
+    });
+
+    const result = queryIndexComparison(db, "NASDAQ_100");
+
+    expect(result.offExchange[0]).toMatchObject({
+      code: "016532",
+      status: "suspended",
+      limitAmountYuan: undefined,
+      limitStatusConflict: false
     });
   });
 

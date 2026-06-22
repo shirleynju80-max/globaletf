@@ -661,7 +661,8 @@ function enrichOffExchangePurchaseLimits(db: Database.Database, rows: IndexCompa
     offExchangeRows.map((row) => row.code)
   );
   for (const row of offExchangeRows) {
-    applyReconciledPurchaseLimit(row, reconcilePurchaseLimit(row.shareClass as ShareClass, limitsByFund.get(row.code) ?? []));
+    const limits = limitsForFundShareClass(limitsByFund.get(row.code) ?? [], row.shareClass);
+    applyReconciledPurchaseLimit(row, reconcilePurchaseLimit(row.shareClass as ShareClass, limits));
   }
 }
 
@@ -670,8 +671,8 @@ function enrichStockConcentrationPurchaseLimits(db: Database.Database, rows: Sto
 
   const limitsByFund = loadPurchaseLimitsByFund(db, rows.map((row) => row.fundCode));
   for (const row of rows) {
-    const limits = limitsByFund.get(row.fundCode);
-    if (!limits?.length) continue;
+    const limits = limitsForFundShareClass(limitsByFund.get(row.fundCode) ?? [], row.shareClass);
+    if (!limits.length) continue;
     const reconciled = reconcilePurchaseLimit(row.shareClass as ShareClass, limits);
     row.purchaseStatus = reconciled.status;
     row.limitAmountYuan = reconciled.limitAmountYuan;
@@ -682,6 +683,11 @@ function enrichStockConcentrationPurchaseLimits(db: Database.Database, rows: Sto
     row.limitStatusConflict = reconciled.statusConflict;
     row.limitStale = reconciled.limitStale;
   }
+}
+
+function limitsForFundShareClass(limits: PurchaseLimit[], shareClass: string): PurchaseLimit[] {
+  const matching = limits.filter((row) => row.shareClass === shareClass);
+  return matching.length > 0 ? matching : limits;
 }
 
 function loadPurchaseLimitsByFund(db: Database.Database, fundCodes: string[]): Map<string, PurchaseLimit[]> {

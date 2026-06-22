@@ -110,8 +110,17 @@ sudo crontab -e
 
 ```cron
 30 8 * * 1-5 cd /opt/globaletf && /usr/bin/npm run sync:daily >> /var/log/globaletf-sync.log 2>&1
+35 8 * * 1-5 cd /opt/globaletf && DATABASE_PATH=/opt/globaletf/data/etflimit.sqlite /usr/bin/npm run health-check >> /var/log/globaletf-health.log 2>&1
 0 12 * * 1-5 cd /opt/globaletf && /usr/bin/npm run sync:limits >> /var/log/globaletf-limits.log 2>&1
 30 15 * * 1-5 cd /opt/globaletf && /usr/bin/npm run sync:limits >> /var/log/globaletf-limits.log 2>&1
+```
+
+`health-check` runs `acceptance` and inspects `sync_status` for `error`. Optional webhook:
+
+```sh
+export NOTIFY_WEBHOOK_URL="https://your-webhook"
+export NOTIFY_WEBHOOK_FORMAT=wecom   # 企业微信机器人；默认 json
+npm run health-check
 ```
 
 ---

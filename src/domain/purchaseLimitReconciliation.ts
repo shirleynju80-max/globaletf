@@ -32,16 +32,17 @@ export function parseSyncRunDate(syncRunId: string): string | undefined {
 }
 
 export function reconcilePurchaseLimit(shareClass: ShareClass, limits: PurchaseLimit[]): ReconciledPurchaseLimit {
-  if (limits.length === 0) {
+  const scopedLimits = limitsForShareClass(shareClass, limits);
+  if (scopedLimits.length === 0) {
     return { status: "unknown", statusConflict: false };
   }
 
-  const knownStatusRows = limits.filter((row) => row.status !== "unknown");
-  const statusRow = pickStrictestStatusRow(knownStatusRows.length > 0 ? knownStatusRows : limits);
-  const amountRow = pickLimitAmountRow(shareClass, limits);
+  const knownStatusRows = scopedLimits.filter((row) => row.status !== "unknown");
+  const statusRow = pickStrictestStatusRow(knownStatusRows.length > 0 ? knownStatusRows : scopedLimits);
+  const amountRow = pickLimitAmountRow(shareClass, scopedLimits);
   const status = statusRow.status;
-  const statusConflict = hasStatusConflict(limits);
-  const limitSyncedAt = latestSyncDate(limits);
+  const statusConflict = hasStatusConflict(shareClass, scopedLimits);
+  const limitSyncedAt = latestSyncDate(scopedLimits);
   const suspended = status === "suspended";
 
   const limitAmountYuan = suspended ? undefined : amountRow?.limitAmountYuan;
@@ -51,7 +52,7 @@ export function reconcilePurchaseLimit(shareClass: ShareClass, limits: PurchaseL
     : amountRow?.limitAmountYuan != null
       ? amountRow.dataDate
       : statusRow.dataDate;
-  const limitStale = computeLimitStale(limitEffectiveDate, limits);
+  const limitStale = computeLimitStale(limitEffectiveDate, scopedLimits);
   return {
     status,
     limitAmountYuan,
@@ -115,12 +116,20 @@ function channelRank(shareClass: ShareClass, row: PurchaseLimit): number {
   return 3;
 }
 
-function hasStatusConflict(limits: PurchaseLimit[]): boolean {
-  const statuses = new Set(
-    limits
-      .filter((row) => row.status !== "unknown")
-      .map((row) => row.status)
+function limitsForShareClass(shareClass: ShareClass, limits: PurchaseLimit[]): PurchaseLimit[] {
+  const matching = limits.filter((row) => row.shareClass === shareClass);
+  return matching.length > 0 ? matching : limits;
+}
+
+function hasStatusConflict(shareClass: ShareClass, limits: PurchaseLimit[]): boolean {
+  const preferredScope = preferredChannelScopeForShareClass(shareClass);
+  const preferredRows = limits.filter(
+    (row) => row.status !== "unknown" && row.channelScope === preferredScope
   );
+  const rows = preferredRows.length > 0
+    ? preferredRows
+    : limits.filter((row) => row.status !== "unknown");
+  const statuses = new Set(rows.map((row) => row.status));
   return statuses.size > 1;
 }
 

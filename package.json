@@ -17,6 +17,7 @@
     "sync:fees": "tsx src/sync/cli.ts fees",
     "sync:holdings": "tsx src/sync/cli.ts holdings",
     "acceptance": "tsx src/acceptance/cli.ts",
+    "health-check": "bash scripts/check-sync-health.sh",
     "audit:tracking": "tsx src/audit/cli.ts"
   },
   "dependencies": {
