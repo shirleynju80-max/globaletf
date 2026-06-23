@@ -1,11 +1,23 @@
+export type ApiProxyMode = "tunnel" | "sslip";
+
 export interface ApiProxyConfig {
-  upstreamHost: string;
-  originHost: string;
-  upstreamPath: string;
+  mode: ApiProxyMode;
+  fetchUrl: string;
+  /** Host header for sslip mode only */
+  originHost?: string;
 }
 
-const DEFAULT_ORIGIN_HOST = "8.147.67.18";
-const DEFAULT_UPSTREAM_HOST = "8-147-67-18.sslip.io";
+const DEFAULT_ORIGIN_IP = "8.147.67.18";
+
+export function parseHttpsOrigin(value: string | undefined): string | null {
+  if (!value?.trim()) return null;
+  try {
+    const url = new URL(value.trim());
+    return url.protocol === "https:" ? url.origin : null;
+  } catch {
+    return null;
+  }
+}
 
 export function parseIpv4Origin(value: string | undefined): string | null {
   if (!value) return null;
@@ -23,19 +35,27 @@ export function upstreamHostForIp(ip: string): string {
   return ip.replace(/\./g, "-") + ".sslip.io";
 }
 
+function buildUpstreamPath(requestUrl: URL, pathParam: string | string[] | undefined): string {
+  const suffix = Array.isArray(pathParam) ? pathParam.join("/") : pathParam ?? "";
+  return suffix ? `/api/${suffix}${requestUrl.search}` : `/api${requestUrl.search}`;
+}
+
 export function buildApiProxyConfig(
   requestUrl: URL,
   pathParam: string | string[] | undefined,
-  env: { API_UPSTREAM_HOST?: string; API_ORIGIN_HOST?: string; API_RESOLVE_IP?: string; API_ORIGIN?: string } = {}
+  env: { API_UPSTREAM_HOST?: string; API_ORIGIN_HOST?: string; API_ORIGIN?: string } = {}
 ): ApiProxyConfig {
-  const originHost = env.API_ORIGIN_HOST ?? parseIpv4Origin(env.API_ORIGIN) ?? env.API_RESOLVE_IP ?? DEFAULT_ORIGIN_HOST;
-  const upstreamHost = env.API_UPSTREAM_HOST ?? upstreamHostForIp(originHost);
-  const suffix = Array.isArray(pathParam) ? pathParam.join("/") : pathParam ?? "";
-  const upstreamPath = suffix ? `/api/${suffix}${requestUrl.search}` : `/api${requestUrl.search}`;
-  return { upstreamHost, originHost, upstreamPath };
-}
+  const upstreamPath = buildUpstreamPath(requestUrl, pathParam);
+  const tunnelOrigin = parseHttpsOrigin(env.API_ORIGIN);
+  if (tunnelOrigin) {
+    return { mode: "tunnel", fetchUrl: new URL(upstreamPath, `${tunnelOrigin}/`).toString() };
+  }
 
-/** Use a public hostname (not raw IP) so Cloudflare subrequests are allowed (avoids error 1003). */
-export function buildOriginFetchUrl(config: ApiProxyConfig): string {
-  return new URL(config.upstreamPath, `http://${config.upstreamHost}/`).toString();
+  const originHost = env.API_ORIGIN_HOST ?? parseIpv4Origin(env.API_ORIGIN) ?? DEFAULT_ORIGIN_IP;
+  const upstreamHost = env.API_UPSTREAM_HOST ?? upstreamHostForIp(originHost);
+  return {
+    mode: "sslip",
+    fetchUrl: new URL(upstreamPath, `http://${upstreamHost}/`).toString(),
+    originHost
+  };
 }

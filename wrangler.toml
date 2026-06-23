@@ -2,6 +2,5 @@ name = "globaletf"
 compatibility_date = "2024-06-01"
 pages_build_output_dir = "dist"
 
-[vars]
-API_ORIGIN_HOST = "8.147.67.18"
-API_UPSTREAM_HOST = "8-147-67-18.sslip.io"
+# Set in Cloudflare Pages dashboard (Production):
+# API_ORIGIN = "https://api.globaletf.store"

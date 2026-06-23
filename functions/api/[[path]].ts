@@ -1,11 +1,14 @@
-import { buildApiProxyConfig, buildOriginFetchUrl } from "./proxy";
+import { buildApiProxyConfig } from "./proxy";
 
-export const onRequest: PagesFunction<{ API_UPSTREAM_HOST?: string; API_ORIGIN_HOST?: string; API_RESOLVE_IP?: string; API_ORIGIN?: string }> = async (context) => {
+export const onRequest: PagesFunction<{ API_UPSTREAM_HOST?: string; API_ORIGIN_HOST?: string; API_ORIGIN?: string }> = async (context) => {
   const config = buildApiProxyConfig(new URL(context.request.url), context.params.path, context.env);
-  const targetUrl = buildOriginFetchUrl(config);
 
   const headers = new Headers(context.request.headers);
-  headers.set("host", config.originHost);
+  if (config.mode === "sslip" && config.originHost) {
+    headers.set("host", config.originHost);
+  } else {
+    headers.delete("host");
+  }
 
   const init: RequestInit = {
     method: context.request.method,
@@ -17,7 +20,7 @@ export const onRequest: PagesFunction<{ API_UPSTREAM_HOST?: string; API_ORIGIN_H
   }
 
   try {
-    const response = await fetch(targetUrl, init);
+    const response = await fetch(config.fetchUrl, init);
     const responseHeaders = new Headers(response.headers);
     responseHeaders.set("Access-Control-Allow-Origin", "*");
     return new Response(response.body, {

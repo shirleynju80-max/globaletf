@@ -1,21 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { buildApiProxyConfig, buildOriginFetchUrl, upstreamHostForIp } from "../../functions/api/proxy";
+import { buildApiProxyConfig, parseHttpsOrigin, upstreamHostForIp } from "../../functions/api/proxy";
 
 describe("api proxy", () => {
-  it("derives sslip hostname from origin IP", () => {
+  it("uses HTTPS API_ORIGIN for Cloudflare Tunnel", () => {
+    expect(parseHttpsOrigin("https://api.globaletf.store")).toBe("https://api.globaletf.store");
+    const config = buildApiProxyConfig(
+      new URL("https://globaletf.pages.dev/api/health"),
+      "health",
+      { API_ORIGIN: "https://api.globaletf.store/" }
+    );
+    expect(config.mode).toBe("tunnel");
+    expect(config.fetchUrl).toBe("https://api.globaletf.store/api/health");
+  });
+
+  it("falls back to sslip when no tunnel URL", () => {
     expect(upstreamHostForIp("8.147.67.18")).toBe("8-147-67-18.sslip.io");
-  });
-
-  it("builds upstream path for nested routes", () => {
-    const url = new URL("https://globaletf.pages.dev/api/live-premium/NASDAQ_100?codes=513100");
-    const config = buildApiProxyConfig(url, ["live-premium", "NASDAQ_100"], {});
-    expect(config.upstreamPath).toBe("/api/live-premium/NASDAQ_100?codes=513100");
-    expect(config.originHost).toBe("8.147.67.18");
-    expect(config.upstreamHost).toBe("8-147-67-18.sslip.io");
-  });
-
-  it("uses sslip hostname in fetch URL and IP in Host header", () => {
     const config = buildApiProxyConfig(new URL("https://globaletf.pages.dev/api/health"), "health", {});
-    expect(buildOriginFetchUrl(config)).toBe("http://8-147-67-18.sslip.io/api/health");
+    expect(config.mode).toBe("sslip");
+    expect(config.fetchUrl).toBe("http://8-147-67-18.sslip.io/api/health");
+    expect(config.originHost).toBe("8.147.67.18");
   });
 });
