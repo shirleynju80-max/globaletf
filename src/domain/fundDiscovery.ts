@@ -8,7 +8,8 @@ export type DiscoverySource =
   | "tracking-profile"
   | "fund-family"
   | "stock-scan"
-  | "qdii-holdings-scan";
+  | "qdii-holdings-scan"
+  | "holdings-disclosure";
 
 /** On-exchange tradable fund codes (ETF / cross-listed LOF). */
 export function isOnExchangeTradableCode(code: string): boolean {

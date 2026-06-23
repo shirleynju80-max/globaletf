@@ -30,33 +30,49 @@ export function upsertHoldingsScanFunds(db: Database.Database, funds: Fund[]): v
 }
 
 /** Enable funds whose latest F10 jjcc disclosures appear in stock_fund_index. */
-export function enableFundsWithHoldingsDisclosures(db: Database.Database): string[] {
+export function enableFundsWithHoldingsDisclosures(
+  db: Database.Database,
+  syncedFundCodes: ReadonlySet<string> = new Set()
+): string[] {
   const codes = (db.prepare(`
     SELECT DISTINCT fund_code AS fundCode
     FROM stock_fund_index
   `).all() as Array<{ fundCode: string }>).map((row) => row.fundCode);
+  if (codes.length === 0) return [];
 
   const enable = db.prepare("UPDATE funds SET enabled = 1 WHERE code = ?");
   const enableWithoutIndexTag = db.prepare("UPDATE funds SET enabled = 1, tracking_target_code = NULL WHERE code = ?");
   const fundRows = db.prepare(`
-    SELECT code, name, tracking_target_code AS trackingTargetCode
+    SELECT code, name, venue, share_class AS shareClass, tracking_target_code AS trackingTargetCode
     FROM funds
-    WHERE code IN (${codes.map(() => "?").join(",") || "NULL"})
-  `).all(...codes) as Array<{ code: string; name: string; trackingTargetCode: string | null }>;
+    WHERE code IN (${codes.map(() => "?").join(",")})
+  `).all(...codes) as Array<{ code: string; name: string; venue: Fund["venue"]; shareClass: Fund["shareClass"]; trackingTargetCode: string | null }>;
   const fundByCode = new Map(fundRows.map((row) => [row.code, row]));
+  const enabled: string[] = [];
 
   const tx = db.transaction(() => {
     for (const fundCode of codes) {
       const fund = fundByCode.get(fundCode);
-      if (fund?.trackingTargetCode && isExcludedIndexDiscoveryName(fund.name, fund.trackingTargetCode)) {
+      if (!fund) continue;
+      if (
+        fund.trackingTargetCode &&
+        fund.venue === "on_exchange" &&
+        (fund.shareClass === "ETF" || fund.shareClass === "LOF") &&
+        !syncedFundCodes.has(fundCode)
+      ) {
+        continue;
+      }
+      if (fund.trackingTargetCode && isExcludedIndexDiscoveryName(fund.name, fund.trackingTargetCode)) {
         enableWithoutIndexTag.run(fundCode);
+        enabled.push(fundCode);
         continue;
       }
       enable.run(fundCode);
+      enabled.push(fundCode);
     }
   });
   tx();
-  return codes;
+  return enabled;
 }
 
 export interface FinalizeStockHoldingIndexResult {
@@ -67,11 +83,12 @@ export interface FinalizeStockHoldingIndexResult {
 export function finalizeStockHoldingIndex(
   db: Database.Database,
   syncRunId: string,
-  qdiiScanFunds: Fund[]
+  qdiiScanFunds: Fund[],
+  syncedFundCodes: ReadonlySet<string> = new Set()
 ): FinalizeStockHoldingIndexResult {
   upsertHoldingsScanFunds(db, qdiiScanFunds);
   const indexRows = rebuildStockFundIndex(db, syncRunId);
-  const enabledFundCodes = enableFundsWithHoldingsDisclosures(db);
+  const enabledFundCodes = enableFundsWithHoldingsDisclosures(db, syncedFundCodes);
   return { indexRows, enabledFundCodes };
 }
 

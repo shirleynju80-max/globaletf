@@ -23,7 +23,7 @@ describe("finalizeStockHoldingIndex", () => {
 
     const result = finalizeStockHoldingIndex(db, "run-1", [
       { code: "539002", name: "建信新兴市场混合(QDII)A", fundType: "QDII", venue: "off_exchange", shareClass: "A", enabled: false, discoverySource: "qdii-holdings-scan" }
-    ]);
+    ], new Set(["513100", "539002"]));
 
     expect(result.indexRows).toBe(2);
     expect(result.enabledFundCodes).toEqual(expect.arrayContaining(["539002", "513100"]));
@@ -62,5 +62,37 @@ describe("finalizeStockHoldingIndex", () => {
 
     expect(db.prepare("SELECT enabled, tracking_target_code AS trackingTargetCode FROM funds WHERE code = '016202'").get())
       .toEqual({ enabled: 1, trackingTargetCode: null });
+  });
+
+  it("does not re-enable index on-exchange ETFs missing from the latest sync snapshot", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-3",
+      funds: [{
+        code: "159509",
+        name: "纳指科技ETF",
+        fundType: "ETF",
+        venue: "on_exchange",
+        trackingTargetCode: "NASDAQ_100",
+        shareClass: "ETF",
+        enabled: false
+      }],
+      quotes: [],
+      limits: [],
+      fees: [],
+      holdings: [{
+        fundCode: "159509",
+        stockCode: "NVDA",
+        stockName: "英伟达",
+        navPercent: 5.2,
+        reportPeriod: "2026Q1",
+        source: "eastmoney-f10-jjcc",
+        syncRunId: "run-3"
+      }]
+    });
+
+    finalizeStockHoldingIndex(db, "run-3", [], new Set(["513100"]));
+
+    expect(db.prepare("SELECT enabled FROM funds WHERE code = '159509'").get()).toEqual({ enabled: 0 });
   });
 });

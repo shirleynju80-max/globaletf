@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createInMemoryDatabase } from "./database";
-import { insertSnapshotBundle, queryIndexComparison, queryStockConcentration, querySyncStatus, recordSyncStatus, rebuildStockFundIndex } from "./repositories";
+import { insertSnapshotBundle, queryIndexComparison, queryStockConcentration, querySyncStatus, recordSyncStatus, rebuildStockFundIndex, buildFundDiscoveryManifestFunds, replaceFundDiscoveryManifest, queryDiscoveryCoverageGaps } from "./repositories";
 
 describe("repositories", () => {
   it("returns grouped index comparison rows from latest snapshots", () => {
@@ -632,5 +632,36 @@ describe("repositories", () => {
       { channel_scope: "agency", source: "tiantian-f10-jjfl", limit_amount_yuan: 5000 },
       { channel_scope: "direct", source: "fundco-announcement-nfjj", limit_amount_yuan: 5000 }
     ]);
+  });
+
+  it("buildFundDiscoveryManifestFunds includes holdings-enabled funds missing from the sync snapshot", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "513100", name: "纳指ETF", fundType: "ETF", venue: "on_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "ETF", enabled: true, discoverySource: "screener-name" },
+        { code: "539002", name: "建信新兴市场", fundType: "QDII", venue: "off_exchange", shareClass: "A", enabled: false }
+      ],
+      quotes: [],
+      limits: [],
+      fees: [],
+      holdings: []
+    });
+    db.prepare("UPDATE funds SET enabled = 1, tracking_target_code = 'NASDAQ_100' WHERE code = '539002'").run();
+
+    const manifestFunds = buildFundDiscoveryManifestFunds(db, [{
+      code: "513100",
+      name: "纳指ETF",
+      fundType: "ETF",
+      venue: "on_exchange",
+      trackingTargetCode: "NASDAQ_100",
+      shareClass: "ETF",
+      enabled: true,
+      discoverySource: "screener-name"
+    }]);
+
+    replaceFundDiscoveryManifest(db, "run-2", manifestFunds, "2026-06-23T10:00:00.000Z");
+    expect(queryDiscoveryCoverageGaps(db, "NASDAQ_100")).toEqual([]);
+    expect(manifestFunds.map((fund) => fund.code)).toEqual(expect.arrayContaining(["513100", "539002"]));
   });
 });

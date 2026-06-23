@@ -869,6 +869,49 @@ export function replaceFundDiscoveryManifest(db: Database.Database, syncRunId: s
   tx();
 }
 
+/** Build manifest rows from post-sync DB state, preserving discovery sources from the sync snapshot. */
+export function buildFundDiscoveryManifestFunds(db: Database.Database, discovered: Fund[]): Fund[] {
+  const discoveredByCode = new Map(discovered.map((fund) => [fund.code, fund]));
+  type EnabledFundRow = Omit<Fund, "enabled" | "trackingTargetCode" | "fundCompany" | "parentFundCode"> & {
+    enabled: number;
+    trackingTargetCode: string | null;
+    fundCompany: string | null;
+    parentFundCode: string | null;
+  };
+
+  const enabledRows = db.prepare(`
+    SELECT
+      code,
+      name,
+      fund_type AS fundType,
+      venue,
+      fund_company AS fundCompany,
+      tracking_target_code AS trackingTargetCode,
+      share_class AS shareClass,
+      parent_fund_code AS parentFundCode,
+      enabled
+    FROM funds
+    WHERE enabled = 1 AND tracking_target_code IS NOT NULL
+  `).all() as EnabledFundRow[];
+
+  return enabledRows.map((row) => {
+    const fromDiscovery = discoveredByCode.get(row.code);
+    if (fromDiscovery) return fromDiscovery;
+    return {
+      code: row.code,
+      name: row.name,
+      fundType: row.fundType,
+      venue: row.venue,
+      fundCompany: row.fundCompany ?? undefined,
+      trackingTargetCode: row.trackingTargetCode ?? undefined,
+      shareClass: row.shareClass,
+      parentFundCode: row.parentFundCode ?? undefined,
+      enabled: true,
+      discoverySource: "holdings-disclosure" as const
+    };
+  });
+}
+
 export interface DiscoveryProfileGapRow {
   targetCode: string;
   fundCode: string;

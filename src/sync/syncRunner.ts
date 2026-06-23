@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { insertSnapshotBundle, recordFundDiscoveryManifest, recordProviderResults, recordSyncRun, recordSyncStatus, replaceDiscoveryProfileGaps, queryCachedHoldingsByFundCode, type ProviderResultRow, type SyncStatusRow } from "../db/repositories";
+import { insertSnapshotBundle, buildFundDiscoveryManifestFunds, recordFundDiscoveryManifest, recordProviderResults, recordSyncRun, recordSyncStatus, replaceDiscoveryProfileGaps, queryCachedHoldingsByFundCode, type ProviderResultRow, type SyncStatusRow } from "../db/repositories";
 import { INDEX_TARGETS, INDEX_TARGET_FUND_SEED_FUNDS, INDEX_TARGET_FUND_SEEDS } from "../domain/targets";
 import { isDelistedOnExchange } from "../domain/delistedOnExchange";
 import type { FeeTier, Fund, FundHolding, FundQuote, ProductVenue, PurchaseLimit } from "../domain/types";
@@ -106,9 +106,9 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
     holdings: stampSyncRunId(holdings?.data ?? [], syncRunId)
   });
   if (areas.has("holding") && holdings && !holdings.isFallback) {
-    finalizeStockHoldingIndex(db, syncRunId, qdiiHoldingsCatalog);
+    finalizeStockHoldingIndex(db, syncRunId, qdiiHoldingsCatalog, new Set(fundSnapshot.data.map((fund) => fund.code)));
   }
-  recordFundDiscoveryManifest(db, syncRunId, fundSnapshot.data, updatedAt);
+  recordFundDiscoveryManifest(db, syncRunId, buildFundDiscoveryManifestFunds(db, fundSnapshot.data), updatedAt);
   replaceDiscoveryProfileGaps(db, syncRunId, fundSnapshot.discoveryProfileGaps ?? [], updatedAt);
   const statuses: SyncStatusRow[] = [];
   if (areas.has("fund")) statuses.push({ area: "fund", durationMs: fundDurationMs, ...fundSnapshot.status, updatedAt });
