@@ -22,7 +22,8 @@ fi
 if [ -z "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]; then
   echo ""
   echo "Next: Cloudflare Zero Trust → Networks → Tunnels → Create"
-  echo "  Public hostname: api.globaletf.store → http://127.0.0.1:8787"
+  echo "  Public hostname: api.globaletf.store → http://127.0.0.1:80"
+  echo "  (use :8787 if globaletf.service sets PORT=8787)"
   echo "  Copy install token, then:"
   echo "  CLOUDFLARE_TUNNEL_TOKEN=<token> bash $0"
   exit 0

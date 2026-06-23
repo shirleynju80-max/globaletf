@@ -13,11 +13,11 @@ Local development runs **two processes**:
 
 ```sh
 npm run api    # :8787
-npm run dev    # :5173 (host: true → localhost or 127.0.0.1)
+npm run dev    # :5173
 ```
 
-Production (option B) runs **Pages (static) + API host**; see [DEPLOY.md](./DEPLOY.md).  
-**Current feature snapshot:** [STATUS.md](./STATUS.md).
+**Production** runs **Cloudflare Pages + Tunnel + Aliyun API**; see [DEPLOY-PAGES.md](./DEPLOY-PAGES.md) and [STATUS.md](./STATUS.md).  
+Fly.io option B: [DEPLOY.md](./DEPLOY.md) (not in use).
 
 ## Your API routes
 

@@ -1,19 +1,18 @@
-# 阿里云部署（推荐：systemd 裸机，不用 Docker）
+# 阿里云部署（宝塔 + systemd）
 
-一台 **轻量应用服务器 / ECS** 跑网页 + API + SQLite。  
-大陆机房（如乌兰察布）可直接用；**无需 Docker Hub**，避免镜像拉取失败。
+大陆 ECS 跑网页 + API + SQLite。**推荐裸机 systemd**，不依赖 Docker Hub。
 
-## 架构
+## 架构（当前生产）
 
 ```
-浏览器 → https://globaletf.store
-              ↓
-         Nginx（80/443）→ 127.0.0.1:8787
-              ↓
-         systemd → npm run start:api（SERVE_STATIC=1）
+globaletf.pages.dev  →  Pages Function  →  api.globaletf.store (Tunnel)  →  阿里云 :80
 ```
 
-同域访问 API，构建时 **不需要** `VITE_API_BASE`。
+详见 [DEPLOY-PAGES.md](./DEPLOY-PAGES.md)、[STATUS.md](./STATUS.md)。
+
+大陆 ECS 直连见 [DEPLOY-ALIYUN.md](./DEPLOY-ALIYUN.md)。
+
+备案完成前域名会被 **ICP 拦截**；公网分享用 Pages。
 
 ---
 
@@ -21,126 +20,20 @@
 
 | 项 | 值 |
 |----|-----|
-| 域名 | **globaletf.store** |
-| 服务器 IP | `47.100.5.7`（宝塔 Linux 面板 11.1.0） |
-| 应用 | `globaletf.service` → `127.0.0.1:8787` |
-| 反代 | Baota Nginx vhost `/www/server/panel/vhost/nginx/globaletf.conf` |
-| 临时访问 | http://47.100.5.7/（DNS 未切前；需先部署 + 放行 80） |
+| IP | `47.100.5.7` |
+| 面板 | 宝塔 Linux 11.1.0 |
+| 代码 | `/opt/globaletf` |
+| 服务 | `systemctl status globaletf` |
+| 端口 | **80**（`globaletf.service` 中 `PORT=80`） |
+| Tunnel | `systemctl status cloudflared` |
+| 域名 DNS | NS 在 **Cloudflare**；`@`/`www` A → 本机；`api` → Tunnel |
+| 健康检查 | `curl http://127.0.0.1/api/health` |
 
 ---
 
-## 域名 globaletf.store
+## 首次部署
 
-### 1. DNS（域名控制台）
-
-| 主机记录 | 类型 | 记录值 |
-|----------|------|--------|
-| `@` | A | `47.100.5.7` |
-| `www` | A 或 CNAME | `47.100.5.7` 或 `globaletf.store` |
-
-生效验证（Mac）：
-
-```sh
-nslookup globaletf.store
-curl http://globaletf.store/api/health
-```
-
-### 2. 阿里云防火墙
-
-放行 **80**、**443**（HTTPS 证书需要 443）。
-
-### 3. HTTPS（DNS 生效后在服务器执行）
-
-```sh
-CERTBOT_EMAIL=你的邮箱@example.com bash /opt/globaletf/scripts/aliyun-enable-https.sh
-```
-
-或宝塔面板 → 网站 → 添加站点 `globaletf.store` → **Let's Encrypt** 申请证书。
-
-### 4. 备案说明
-
-`.store` 域名 + 大陆乌兰察布机房：**若面向大陆用户，通常需要 ICP 备案**。未备案时可能面临访问限制；香港机房可免备案但延迟不同。
-
----
-
-## 宝塔面板快速部署（当前机器）
-
-服务器：**47.100.5.7** · 宝塔 Linux 面板 11.1.0 · 域名 **globaletf.store**
-
-### A. 本机打包上传
-
-Mac 终端：
-
-```sh
-cd /Users/shuke-xl/Documents/etflimit
-COPYFILE_DISABLE=1 tar czf ~/Desktop/globaletf.tgz \
-  --exclude=node_modules --exclude=data --exclude=dist --exclude=.git .
-```
-
-宝塔 **文件** → 上传到 `/opt/globaletf.tgz` → 解压到 `/opt/globaletf`。
-
-或 **终端**：
-
-```sh
-mkdir -p /opt/globaletf
-tar xzf /opt/globaletf.tgz -C /opt/globaletf
-```
-
-### B. 一键部署（宝塔终端，root）
-
-```sh
-chmod +x /opt/globaletf/scripts/baota-systemd-deploy.sh
-bash /opt/globaletf/scripts/baota-systemd-deploy.sh
-```
-
-脚本会：装 Node 22 → `npm ci` → `npm run build` → 启 `globaletf.service` → 写入 Nginx 反代配置。
-
-### C. 迁旧数据库（可选，比重新 sync 快）
-
-若旧机 `8.147.67.18` 仍可登录，在旧机：
-
-```sh
-cp /opt/globaletf/data/etflimit.sqlite ~/etflimit.sqlite
-```
-
-下载后上传到新机 `/opt/globaletf/data/etflimit.sqlite`，然后：
-
-```sh
-systemctl restart globaletf
-```
-
-无旧库则新机执行：`cd /opt/globaletf && npm run sync:daily`
-
-### D. DNS（必做，当前仍指向旧 IP）
-
-域名控制台把 **globaletf.store**、**www** 的 A 记录改为 **`47.100.5.7`**。
-
-生效验证：
-
-```sh
-nslookup globaletf.store
-curl http://globaletf.store/api/health
-```
-
-### E. 宝塔防火墙与安全组
-
-- 阿里云安全组：放行 **80**、**443**
-- 宝塔 **安全** → 放行 **80**、**443**
-
-### F. HTTPS
-
-DNS 生效后：宝塔 → **网站** → `globaletf.store` → **SSL** → **Let's Encrypt** → 申请并开启强制 HTTPS。
-
-### G. 定时同步（宝塔计划任务或 crontab）
-
-```cron
-30 8 * * 1-5 cd /opt/globaletf && /usr/bin/npm run sync:daily >> /var/log/globaletf-sync.log 2>&1
-0 12 * * 1-5 cd /opt/globaletf && /usr/bin/npm run sync:limits >> /var/log/globaletf-limits.log 2>&1
-```
-
----
-
-Mac 打包（排除 macOS 元数据）：
+### 1. 打包上传
 
 ```sh
 cd /path/to/etflimit
@@ -148,137 +41,101 @@ COPYFILE_DISABLE=1 tar czf ~/Desktop/globaletf.tgz \
   --exclude=node_modules --exclude=data --exclude=dist --exclude=.git .
 ```
 
-Workbench **上传**到服务器 `/opt/globaletf.tgz`，解压：
+宝塔 **文件** → 上传 `/opt/globaletf.tgz` → 解压到 `/opt/globaletf`。
+
+### 2. 一键部署
 
 ```sh
-sudo mkdir -p /opt/globaletf
-sudo tar xzf /opt/globaletf.tgz -C /opt/globaletf
+chmod +x /opt/globaletf/scripts/baota-systemd-deploy.sh
+bash /opt/globaletf/scripts/baota-systemd-deploy.sh
 ```
 
----
-
-## 2. 安装 Node 22（Alibaba Cloud Linux 3）
+若机器未装 Nginx，脚本后需把服务改到 80 端口：
 
 ```sh
-sudo yum install -y python3 make gcc-c++ git
-curl -fsSL https://rpm.nodesource.com/setup_22.x | sudo bash -
-sudo yum install -y nodejs
-node -v   # v22.x
+sed -i 's/Environment=PORT=8787/Environment=PORT=80/' /etc/systemd/system/globaletf.service
+systemctl daemon-reload && systemctl restart globaletf
 ```
 
-npm 镜像（可选，大陆更快）：
-
-```sh
-npm config set registry https://registry.npmmirror.com
-```
-
----
-
-## 3. 构建 + systemd 服务
+### 3. 灌数据
 
 ```sh
 cd /opt/globaletf
-npm ci
-npm run build
-
-sudo mkdir -p /opt/globaletf/data /opt/globaletf/logs
-sudo cp deploy/globaletf.service /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now globaletf
-sudo systemctl status globaletf
-curl http://127.0.0.1:8787/api/health
+npm run sync:daily    # 约 10–20 分钟
+npm run acceptance
 ```
 
-或一键脚本（代码已在 `/opt/globaletf` 时）：
+或从旧机拷贝 `data/etflimit.sqlite` 后 `systemctl restart globaletf`。
+
+### 4. 防火墙
+
+阿里云安全组 + 宝塔 **安全**：放行 **80**、**443**。
+
+### 5. DNS
+
+域名 NS 在 **Cloudflare**（见 [DEPLOY-PAGES.md](./DEPLOY-PAGES.md)）。在 Cloudflare DNS 中：
+
+- `@` / `www` → A → **`47.100.5.7`**
+- `api` → Tunnel → `globaletf-api`（勿在阿里云单独改）
+
+若仅 IP 访问，安全组放行 **80** 即可，无需改 DNS。
+
+### 6. 定时同步
 
 ```sh
-sudo bash /opt/globaletf/scripts/aliyun-systemd-deploy.sh
-```
-
----
-
-## 4. 首次灌数据
-
-```sh
-cd /opt/globaletf
-npm run sync:daily      # 约 10–20 分钟
-npm run acceptance      # 数据门禁
-```
-
----
-
-## 5. 定时同步（crontab）
-
-```sh
-sudo crontab -e
+crontab -e
 ```
 
 ```cron
-30 8 * * 1-5 cd /opt/globaletf && /usr/bin/npm run sync:daily >> /var/log/globaletf-sync.log 2>&1
-35 8 * * 1-5 cd /opt/globaletf && DATABASE_PATH=/opt/globaletf/data/etflimit.sqlite /usr/bin/npm run health-check >> /var/log/globaletf-health.log 2>&1
-0 12 * * 1-5 cd /opt/globaletf && /usr/bin/npm run sync:limits >> /var/log/globaletf-limits.log 2>&1
-30 15 * * 1-5 cd /opt/globaletf && /usr/bin/npm run sync:limits >> /var/log/globaletf-limits.log 2>&1
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+SHELL=/bin/bash
+30 8 * * 1-5 /opt/globaletf/scripts/daily-sync.sh >> /var/log/globaletf-sync.log 2>&1
+0 12 * * 1-5 /opt/globaletf/scripts/limits-sync.sh >> /var/log/globaletf-limits.log 2>&1
+30 15 * * 1-5 /opt/globaletf/scripts/limits-sync.sh >> /var/log/globaletf-limits.log 2>&1
 ```
 
-`health-check` runs `acceptance` and inspects `sync_status` for `error`. Optional webhook:
+> 必须用 **wrapper 脚本**，不要直接 `npm run …`（cron 环境缺 `PATH` 会静默失败）。
+
+日志：`/opt/globaletf/logs/daily-sync.log`、`/var/log/globaletf-sync.log`。
+
+---
+
+## 备案与 HTTPS
+
+1. **ICP 备案**通过后，`globaletf.store` 可在大陆正常解析访问。
+2. 宝塔 → **软件商店** 安装 Nginx → **网站** → 添加 `globaletf.store`。
+3. 若应用仍占 80 端口：改 `globaletf.service` 为 `PORT=8787`，Nginx 反代到 `127.0.0.1:8787`（配置见 `deploy/nginx-globaletf.conf`）。
+4. **SSL** → Let's Encrypt → 开启强制 HTTPS。
+
+或备案后执行：
 
 ```sh
-export NOTIFY_WEBHOOK_URL="https://your-webhook"
-export NOTIFY_WEBHOOK_FORMAT=wecom   # 企业微信机器人；默认 json
-npm run health-check
+CERTBOT_EMAIL=you@example.com bash /opt/globaletf/scripts/aliyun-enable-https.sh
 ```
 
 ---
 
-## 6. 放行外网访问
-
-### 轻量应用服务器：用 80 端口（推荐）
-
-控制台防火墙里 **HTTP 80** 通常已放行。服务监听 **80** 即可公网访问：
-
-```sh
-# deploy/globaletf.service 里 Environment=PORT=80
-curl http://127.0.0.1:80/api/health
-```
-
-浏览器：**http://\<公网IP\>/**（不要加 `:8787`）
-
-### 若坚持用 8787
-
-添加 **自定义 TCP 8787** 规则。若外网仍 `Empty reply` 而本机 127.0.0.1 正常，说明外层防火墙未转发该端口——**改用 80** 或联系阿里云工单。
-
-### 验证
-
-```sh
-curl http://<公网IP>/api/health
-```
-
-应返回 `{"ok":true}`。
-
----
-
-## 7. 日常运维
+## 日常运维
 
 | 操作 | 命令 |
 |------|------|
 | 状态 | `systemctl status globaletf` |
 | 重启 | `systemctl restart globaletf` |
-| 日志 | `tail -f /opt/globaletf/logs/app.log` |
-| 更新代码 | 重新上传 → `npm ci && npm run build && systemctl restart globaletf` |
-| 手动同步 | `cd /opt/globaletf && npm run sync:daily` |
-| 备份 DB | `cp /opt/globaletf/data/etflimit.sqlite ~/backup.sqlite` |
+| 应用日志 | `tail -f /opt/globaletf/logs/app.log` |
+| 同步日志 | `tail -f /opt/globaletf/logs/daily-sync.log` |
+| 更新代码 | 上传新包 → `npm ci && npm run build && systemctl restart globaletf` |
+| 手动全量同步 | `cd /opt/globaletf && npm run sync:daily` |
+| 备份 DB | `cp /opt/globaletf/data/etflimit.sqlite ~/backup-$(date +%F).sqlite` |
 
 ---
 
-## 备选：Docker 部署
+## 备选：Docker
 
-大陆服务器拉 `docker.io` 常超时，仅在香港/海外或已配置镜像加速时推荐：
+大陆拉 `docker.io` 常超时，仅在香港/海外或已配镜像加速时考虑：
 
 ```sh
 docker compose -f docker-compose.aliyun.yml up -d --build
 ```
-
-见 `docker-compose.aliyun.yml`、`Dockerfile`。
 
 ---
 
@@ -287,5 +144,8 @@ docker compose -f docker-compose.aliyun.yml up -d --build
 | 文件 | 用途 |
 |------|------|
 | `deploy/globaletf.service` | systemd 单元 |
-| `scripts/aliyun-systemd-deploy.sh` | 裸机构建 + 启服务 |
-| `deploy/nginx-globaletf.conf.example` | 绑域名时 Nginx 反代 |
+| `scripts/baota-systemd-deploy.sh` | 宝塔一键部署 |
+| `scripts/daily-sync.sh` / `limits-sync.sh` | cron 包装脚本 |
+| `deploy/nginx-globaletf.conf` | 域名 + Nginx 反代 |
+
+同步说明见 [DATA-SYNC.md](./DATA-SYNC.md)。

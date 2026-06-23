@@ -1,112 +1,102 @@
-# Cloudflare Pages（备案期间临时上线）
+# Cloudflare Pages 生产部署
 
-备案完成前，用 **https://globaletf.pages.dev** 访问。API 经 **Cloudflare Tunnel** 连大陆服务器（绕过 ICP 拦截与 Workers 直连 IP 限制）。
+公网主站：**https://globaletf.pages.dev**  
+API 经 **Cloudflare Tunnel** 连阿里云（绕过大陆 ICP 拦截与 Workers 直连 IP 限制）。
 
 ## 架构
 
 ```
 浏览器 → https://globaletf.pages.dev
-              ├─ /, /indices, /stocks     静态 dist/
-              └─ /api/*                   Pages Function
-                                              ↓
-                                    https://api.globaletf.store  (Tunnel)
-                                              ↓
-                              阿里云 127.0.0.1:8787  (cloudflared 出站)
+              ├─ /, /indices, /stocks, /status   静态 dist/
+              └─ /api/*                          Pages Function
+                                                      ↓
+                                            https://api.globaletf.store
+                                                      ↓
+                                    cloudflared（阿里云 systemd）
+                                                      ↓
+                                            http://127.0.0.1:80
 ```
 
-构建时 **不设置** `VITE_API_BASE`。
+构建时 **不设置** `VITE_API_BASE`（同源 `/api` 由 Function 代理）。
 
 ---
 
-## 第一步：Pages 已部署 ✓
+## 当前配置
 
-项目 `globaletf` → **https://globaletf.pages.dev**
-
----
-
-## 第二步：Cloudflare Tunnel（必做，否则 /api 无数据）
-
-大陆 IP / sslip **不能** 给 Pages Function 直连（1003 或备案拦截）。要在服务器跑 **cloudflared**，用 Tunnel 域名暴露 API。
-
-### 2.1 把域名加到 Cloudflare（若尚未添加）
-
-1. [Cloudflare Dashboard](https://dash.cloudflare.com/) → **Add a site** → `globaletf.store`
-2. 按提示改域名 NS 到 Cloudflare，或仅添加 DNS 记录（若 NS 仍在阿里云，Tunnel 公网 hostname 需 NS 在 CF）
-
-> Tunnel 子域 `api.globaletf.store` 的 CNAME 由 Cloudflare 自动管理，**不会**触发大陆 ICP 80 端口拦截。
-
-### 2.2 创建 Tunnel
-
-1. [Cloudflare Zero Trust](https://one.dash.cloudflare.com/) → **Networks** → **Tunnels** → **Create**
-2. 类型 **Cloudflared**，名称 `globaletf-api`
-3. **Public Hostname**：
-   - Subdomain: `api`
-   - Domain: `globaletf.store`
-   - Service: `http://127.0.0.1:8787`
-4. 复制 **Install command** 里的 token（`eyJ...`）
-
-### 2.3 在阿里云服务器安装 connector
-
-SSH 登录后：
-
-```sh
-bash /opt/globaletf/scripts/aliyun-cloudflared-install.sh
-# 若未装 cloudflared，脚本会下载
-
-CLOUDFLARE_TUNNEL_TOKEN=eyJ... bash /opt/globaletf/scripts/aliyun-cloudflared-install.sh
-```
+| 项 | 值 |
+|----|-----|
+| Pages 项目 | `globaletf` |
+| 公网 URL | https://globaletf.pages.dev |
+| Git | `shirleynju80-max/globaletf` → `main` |
+| Build | `npm ci && npm run build` |
+| Output | `dist` |
+| API 上游 | `API_ORIGIN=https://api.globaletf.store`（[`wrangler.toml`](../wrangler.toml)） |
+| Tunnel | Zero Trust → `globaletf-api` |
+| Tunnel 路由 | `api.globaletf.store` → `http://127.0.0.1:80` |
+| 域名 NS | Cloudflare（`elle.ns.cloudflare.com` / `fonzie.ns.cloudflare.com`） |
 
 验证：
 
 ```sh
+curl https://globaletf.pages.dev/api/health
 curl https://api.globaletf.store/api/health
 ```
 
-应返回 `{"ok":true}`。
-
-### 2.4 Pages 环境变量
-
-Cloudflare → **Workers & Pages** → **globaletf** → **Settings** → **Environment variables** → Production：
-
-| Name | Value |
-|------|--------|
-| **`API_ORIGIN`** | **`https://api.globaletf.store`** |
-
-删除旧的 `API_ORIGIN_HOST` / `API_UPSTREAM_HOST`（如有）。
-
-**Save** → **Retry deployment**（或 push 任意 commit 触发 rebuild）。
+均应返回 `{"ok":true}`。
 
 ---
 
-## 验证
+## 更新前端
+
+**自动（推荐）：** push 到 `main`，Pages 从 GitHub 构建部署。
+
+**手动：**
 
 ```sh
-curl https://globaletf.pages.dev/api/health
-curl https://globaletf.pages.dev/api/targets
+npm ci && npm run build
+npx wrangler pages deploy dist --project-name=globaletf --branch=main
 ```
 
-浏览器：
-
-- https://globaletf.pages.dev/
-- https://globaletf.pages.dev/indices
+`wrangler.toml` 中的 `[vars] API_ORIGIN` 会随部署带入 Functions。
 
 ---
 
-## 构建设置（参考）
+## Tunnel 运维
 
-| 项 | 值 |
-|----|-----|
-| Build command | `npm ci && npm run build` |
-| Build output | `dist` |
-| `VITE_API_BASE` | **留空** |
+Connector 在阿里云以 systemd 运行：
+
+```sh
+systemctl status cloudflared
+journalctl -u cloudflared -n 50 --no-pager
+```
+
+重装或换 token：
+
+```sh
+CLOUDFLARE_TUNNEL_TOKEN=eyJ... bash /opt/globaletf/scripts/aliyun-cloudflared-install.sh
+```
+
+Token 来源：Zero Trust → Networks → Tunnels → `globaletf-api` → Add connector。
+
+服务器 API 本机检查：
+
+```sh
+curl http://127.0.0.1:80/api/health
+```
 
 ---
 
-## 备案通过后
+## DNS（Cloudflare）
 
-1. ICP 通过 → `globaletf.store` 可解析大陆 IP  
-2. 可选：停用 Tunnel，Pages 改 `API_ORIGIN` 或改回纯阿里云 + HTTPS  
-3. 或保留 Pages 作 CDN 前端，API 仍走 Tunnel / 大陆机  
+域名 `globaletf.store` 已在 Cloudflare **Active**。关键记录：
+
+| 名称 | 类型 | 内容 | 说明 |
+|------|------|------|------|
+| `@` | A | `47.100.5.7` | 根域名（备案通过后可用） |
+| `www` | A | `47.100.5.7` | |
+| `api` | Tunnel | `globaletf-api` | 由 Zero Trust 管理，勿手改 |
+
+> NS 必须在 Cloudflare，仅阿里云 CNAME 到 `cfargotunnel.com` **不够**（公网无 IPv4 A 记录）。
 
 ---
 
@@ -114,7 +104,27 @@ curl https://globaletf.pages.dev/api/targets
 
 | 现象 | 处理 |
 |------|------|
-| `/api/health` 返回 1003 | 未设 `API_ORIGIN=https://...`，仍在直连 IP |
-| 返回备案 HTML | 未走 Tunnel；检查 `api.globaletf.store` 是否 CNAME 到 tunnel |
-| Tunnel 不通 | `systemctl status cloudflared`；8787 本机 `curl http://127.0.0.1:8787/api/health` |
-| 页面有、数据空 | Pages 环境变量改后需 **重新部署** |
+| Pages 有页面、无数据 | 查 `wrangler.toml` 的 `API_ORIGIN`；重新 `pages deploy` |
+| `/api/health` 1003 | 未走 Tunnel，仍在直连 IP；确认 `API_ORIGIN` 为 `https://api.globaletf.store` |
+| Tunnel INACTIVE | 服务器执行 `systemctl status cloudflared`；重装 connector |
+| `api.globaletf.store` 本机 curl 失败 | 关 Clash/Surge fake-ip，或换网络/浏览器测 |
+| 改 env 后仍旧行为 | Pages 需 **重新部署** 才生效 |
+
+---
+
+## 备案通过后（可选）
+
+1. 宝塔/Nginx 为 `globaletf.store` 配置 HTTPS → 见 [DEPLOY-ALIYUN.md](./DEPLOY-ALIYUN.md)
+2. Pages → Custom domains → 添加 `globaletf.store`
+3. 可保留 Tunnel + Pages 架构，或改为纯阿里云托管
+
+---
+
+## 相关文件
+
+| 文件 | 用途 |
+|------|------|
+| [`wrangler.toml`](../wrangler.toml) | Pages 项目 + `API_ORIGIN` |
+| [`functions/api/proxy.ts`](../functions/api/proxy.ts) | `/api/*` 代理逻辑 |
+| [`scripts/aliyun-cloudflared-install.sh`](../scripts/aliyun-cloudflared-install.sh) | 服务器安装 cloudflared |
+| [`.github/workflows/deploy-pages.yml`](../.github/workflows/deploy-pages.yml) | CI 部署（若启用） |

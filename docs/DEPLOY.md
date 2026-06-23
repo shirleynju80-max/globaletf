@@ -1,4 +1,7 @@
-# Production deployment (option B)
+# Production deployment (option B — 备选，未使用)
+
+> **当前生产** 为阿里云 API + Cloudflare Pages + Tunnel，见 [STATUS.md](./STATUS.md) 与 [DEPLOY-PAGES.md](./DEPLOY-PAGES.md)。  
+> 本文档保留 Fly.io 方案供参考。
 
 Split hosting: **static web** on Cloudflare Pages, **API** on Fly.io (Hong Kong).  
 Same layout works for a future WeChat mini-program (it only needs the API origin).

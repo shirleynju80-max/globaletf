@@ -38,12 +38,21 @@ launchctl load ~/Library/LaunchAgents/com.etflimit.daily-sync.plist
 
 Limits-only agent: `scripts/com.etflimit.limits-sync.plist.example` + `scripts/limits-sync.sh`.
 
-### Linux cron
+### Linux cron（生产推荐 wrapper）
 
 ```cron
-30 8 * * 1-5 cd /path/to/etflimit && npm run sync:daily && npm run acceptance >> logs/daily-sync.log 2>&1
-0 12 * * 1-5 cd /path/to/etflimit && npm run sync:limits >> logs/limits-sync.log 2>&1
-30 15 * * 1-5 cd /path/to/etflimit && npm run sync:limits >> logs/limits-sync.log 2>&1
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+SHELL=/bin/bash
+30 8 * * 1-5 /opt/globaletf/scripts/daily-sync.sh >> /var/log/globaletf-sync.log 2>&1
+0 12 * * 1-5 /opt/globaletf/scripts/limits-sync.sh >> /var/log/globaletf-limits.log 2>&1
+30 15 * * 1-5 /opt/globaletf/scripts/limits-sync.sh >> /var/log/globaletf-limits.log 2>&1
+```
+
+本地开发可直接：
+
+```cron
+30 8 * * 1-5 cd /path/to/etflimit && ./scripts/daily-sync.sh
+0 12 * * 1-5 cd /path/to/etflimit && ./scripts/limits-sync.sh
 ```
 
 ## UI-driven refresh
@@ -97,6 +106,10 @@ Query locally:
 ```sh
 sqlite3 data/etflimit.sqlite "SELECT area, status, data_date, updated_at FROM sync_status"
 ```
+
+## Fund discovery
+
+`sync:daily` verifies index-tagged funds against East Money F10 **跟踪标的 / 业绩比较基准**. Mismatches and excluded theme names (e.g. 汽车/科技 QDII) are set `enabled = 0` automatically. See `src/sync/trackingProfileSync.ts`.
 
 ## Data freshness notes
 
