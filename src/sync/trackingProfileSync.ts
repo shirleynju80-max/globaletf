@@ -72,7 +72,7 @@ export function disableExcludedDiscoveryNames(funds: Fund[]): Fund[] {
     if (!fund.trackingTargetCode || !isExcludedIndexDiscoveryName(fund.name, fund.trackingTargetCode)) {
       return fund;
     }
-    return { ...fund, enabled: false };
+    return { ...fund, enabled: false, trackingTargetCode: undefined };
   });
 }
 
@@ -81,7 +81,7 @@ export function disableProfileMismatchedFunds(funds: Fund[], profiles: FundTrack
   const mismatches = new Set(profiles.filter((row) => !row.verifiedOk).map((row) => row.fundCode));
   return funds.map((fund) => {
     if (!fund.trackingTargetCode || !mismatches.has(fund.code)) return fund;
-    return { ...fund, enabled: false };
+    return { ...fund, enabled: false, trackingTargetCode: undefined };
   });
 }
 

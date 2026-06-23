@@ -30,4 +30,37 @@ describe("finalizeStockHoldingIndex", () => {
     expect(db.prepare("SELECT enabled FROM funds WHERE code = '539002'").get()).toEqual({ enabled: 1 });
     expect(db.prepare("SELECT COUNT(*) AS count FROM stock_fund_index WHERE stock_key = 'NVDA'").get()).toEqual({ count: 2 });
   });
+
+  it("does not restore excluded theme QDII funds to an index target when enabling holdings disclosures", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-2",
+      funds: [{
+        code: "016202",
+        name: "汇添富全球汽车产业升级混合(QDII)人民币C",
+        fundType: "QDII-混合",
+        venue: "off_exchange",
+        shareClass: "C",
+        trackingTargetCode: "NASDAQ_100",
+        enabled: false
+      }],
+      quotes: [],
+      limits: [],
+      fees: [],
+      holdings: [{
+        fundCode: "016202",
+        stockCode: "NVDA",
+        stockName: "英伟达",
+        navPercent: 8.1,
+        reportPeriod: "2026Q1",
+        source: "eastmoney-f10-jjcc",
+        syncRunId: "run-2"
+      }]
+    });
+
+    finalizeStockHoldingIndex(db, "run-2", []);
+
+    expect(db.prepare("SELECT enabled, tracking_target_code AS trackingTargetCode FROM funds WHERE code = '016202'").get())
+      .toEqual({ enabled: 1, trackingTargetCode: null });
+  });
 });

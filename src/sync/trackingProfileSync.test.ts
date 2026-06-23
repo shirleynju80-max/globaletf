@@ -21,6 +21,7 @@ describe("trackingProfileSync verification gate", () => {
   it("disables index-tagged funds with excluded theme names", () => {
     const result = disableExcludedDiscoveryNames([autoFund()]);
     expect(result[0].enabled).toBe(false);
+    expect(result[0].trackingTargetCode).toBeUndefined();
   });
 
   it("disables funds whose F10 profile does not match the assigned index", () => {

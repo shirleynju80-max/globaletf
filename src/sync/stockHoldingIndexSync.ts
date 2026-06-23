@@ -1,4 +1,5 @@
 import type Database from "better-sqlite3";
+import { isExcludedIndexDiscoveryName } from "../domain/fundDiscovery";
 import { lookupStockKey } from "../domain/stockHoldingIndex";
 import type { Fund } from "../domain/types";
 import { rebuildStockFundIndex } from "../db/repositories";
@@ -36,8 +37,23 @@ export function enableFundsWithHoldingsDisclosures(db: Database.Database): strin
   `).all() as Array<{ fundCode: string }>).map((row) => row.fundCode);
 
   const enable = db.prepare("UPDATE funds SET enabled = 1 WHERE code = ?");
+  const enableWithoutIndexTag = db.prepare("UPDATE funds SET enabled = 1, tracking_target_code = NULL WHERE code = ?");
+  const fundRows = db.prepare(`
+    SELECT code, name, tracking_target_code AS trackingTargetCode
+    FROM funds
+    WHERE code IN (${codes.map(() => "?").join(",") || "NULL"})
+  `).all(...codes) as Array<{ code: string; name: string; trackingTargetCode: string | null }>;
+  const fundByCode = new Map(fundRows.map((row) => [row.code, row]));
+
   const tx = db.transaction(() => {
-    for (const fundCode of codes) enable.run(fundCode);
+    for (const fundCode of codes) {
+      const fund = fundByCode.get(fundCode);
+      if (fund?.trackingTargetCode && isExcludedIndexDiscoveryName(fund.name, fund.trackingTargetCode)) {
+        enableWithoutIndexTag.run(fundCode);
+        continue;
+      }
+      enable.run(fundCode);
+    }
   });
   tx();
   return codes;
