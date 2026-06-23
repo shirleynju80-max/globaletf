@@ -20,6 +20,10 @@ require_root() {
   fi
 }
 
+prepare_git() {
+  git config --global --add safe.directory "$ROOT" 2>/dev/null || true
+}
+
 install_deps() {
   cd "$ROOT"
   npm config set registry https://registry.npmmirror.com
@@ -40,8 +44,17 @@ cmd_install() {
   fi
 
   cd "$ROOT"
-  git init
-  git remote add origin "$REPO"
+  prepare_git
+  if [[ -d "$ROOT/.git" ]] && git remote get-url origin >/dev/null 2>&1; then
+    echo "Git already initialized in $ROOT. Run: $0 update"
+    exit 0
+  fi
+  if [[ ! -d "$ROOT/.git" ]]; then
+    git init
+  fi
+  if ! git remote get-url origin >/dev/null 2>&1; then
+    git remote add origin "$REPO"
+  fi
   git fetch origin "$BRANCH"
   git checkout -B "$BRANCH" "origin/$BRANCH"
 
@@ -67,6 +80,7 @@ cmd_update() {
   fi
 
   cd "$ROOT"
+  prepare_git
   git fetch origin "$BRANCH"
   git reset --hard "origin/$BRANCH"
 
