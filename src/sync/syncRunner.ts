@@ -18,7 +18,7 @@ import { mapConcurrent } from "../providers/requestUtils";
 import type { DataProvider, ProviderAttempt } from "../providers/types";
 import { tradeDateCloseMs } from "../domain/iopvAlignment";
 import { enrichQuoteWithMatchedIopv, normalizeOnExchangeQuoteSource } from "./iopvQuoteEnrichment";
-import { syncFundTrackingProfiles, applyProfileDiscoverySources, type FundTrackingProfileRow } from "./trackingProfileSync";
+import { syncFundTrackingProfiles, applyIndexFundVerificationGate, type FundTrackingProfileRow } from "./trackingProfileSync";
 import { mergeFundsForHoldingsSync } from "./holdingsSyncUniverse";
 import { finalizeStockHoldingIndex } from "./stockHoldingIndexSync";
 import { mergeFundsForLimitsSync } from "./limitsSyncUniverse";
@@ -67,7 +67,7 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
     const profiles = await syncProfiles(db, fundSnapshot.data).catch(() => []);
     fundSnapshot = {
       ...fundSnapshot,
-      data: applyProfileDiscoverySources(fundSnapshot.data, profiles)
+      data: applyIndexFundVerificationGate(fundSnapshot.data, profiles)
     };
   }
   let quotes: ResolvedData<FundQuote[]> | undefined;

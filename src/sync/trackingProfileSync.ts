@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
 import { CATALOG_FUNDS } from "../domain/fundCatalog";
+import { isExcludedIndexDiscoveryName } from "../domain/fundDiscovery";
 import { INDEX_TARGETS } from "../domain/targets";
 import type { Fund } from "../domain/types";
 import { fetchFundProfile, profileMatchesIndex } from "../providers/eastmoneyFundProfile";
@@ -63,6 +64,29 @@ export function applyProfileDiscoverySources(funds: Fund[], profiles: FundTracki
     if (!verified.has(fund.code)) return fund;
     return { ...fund, discoverySource: "tracking-profile" };
   });
+}
+
+/** Drop index-tagged funds whose display name is a known non-index theme (e.g. 汽车产业升级). */
+export function disableExcludedDiscoveryNames(funds: Fund[]): Fund[] {
+  return funds.map((fund) => {
+    if (!fund.trackingTargetCode || !isExcludedIndexDiscoveryName(fund.name, fund.trackingTargetCode)) {
+      return fund;
+    }
+    return { ...fund, enabled: false };
+  });
+}
+
+/** Drop index-tagged funds whose F10 tracking index / benchmark failed verification. */
+export function disableProfileMismatchedFunds(funds: Fund[], profiles: FundTrackingProfileRow[]): Fund[] {
+  const mismatches = new Set(profiles.filter((row) => !row.verifiedOk).map((row) => row.fundCode));
+  return funds.map((fund) => {
+    if (!fund.trackingTargetCode || !mismatches.has(fund.code)) return fund;
+    return { ...fund, enabled: false };
+  });
+}
+
+export function applyIndexFundVerificationGate(funds: Fund[], profiles: FundTrackingProfileRow[]): Fund[] {
+  return disableExcludedDiscoveryNames(disableProfileMismatchedFunds(applyProfileDiscoverySources(funds, profiles), profiles));
 }
 
 export function queryFundTrackingProfileMismatches(db: Database.Database, fundCodes: string[]): string[] {

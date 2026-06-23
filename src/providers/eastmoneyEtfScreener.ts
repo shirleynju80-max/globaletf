@@ -4,7 +4,7 @@ import { fetchWithTimeout } from "./requestUtils";
 import type { DataProvider } from "./types";
 
 const SOURCE = "eastmoney-etf-screener";
-const CLIST_ENDPOINT = "https://push2.eastmoney.com/api/qt/clist/get";
+const CLIST_HOSTS = ["https://push2.eastmoney.com", "https://push2delay.eastmoney.com"];
 const DEFAULT_PAGE_SIZE = 500;
 const MAX_PAGES = 20;
 
@@ -70,12 +70,8 @@ export async function fetchAllEastMoneyEtfScreenerRows(options: FetchAllOptions 
       fields: "f12,f14"
     });
 
-    const response = await fetchWithTimeout(
-      fetchImpl,
-      `${CLIST_ENDPOINT}?${params.toString()}`,
-      { headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://quote.eastmoney.com/" } },
-      timeoutMs
-    );
+    const response = await fetchClistPage(fetchImpl, params, timeoutMs);
+    if (!response) break;
     if (!response.ok) break;
 
     let payload: { data?: { diff?: unknown[]; total?: number } };
@@ -93,6 +89,27 @@ export async function fetchAllEastMoneyEtfScreenerRows(options: FetchAllOptions 
   }
 
   return mergeFundSearchRowsByCode(merged);
+}
+
+async function fetchClistPage(
+  fetchImpl: typeof fetch,
+  params: URLSearchParams,
+  timeoutMs: number
+): Promise<Response | null> {
+  for (const host of CLIST_HOSTS) {
+    try {
+      const response = await fetchWithTimeout(
+        fetchImpl,
+        `${host}/api/qt/clist/get?${params.toString()}`,
+        { headers: { "User-Agent": "Mozilla/5.0 globaletf/0.1", Referer: "https://quote.eastmoney.com/" } },
+        timeoutMs
+      );
+      if (response.ok) return response;
+    } catch {
+      continue;
+    }
+  }
+  return null;
 }
 
 export function createEastMoneyEtfScreenerProvider(options: ProviderOptions): DataProvider<Fund[]> {

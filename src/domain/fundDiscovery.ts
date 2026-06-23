@@ -27,9 +27,14 @@ export const INDEX_DISCOVERY_NAME_HINTS: Record<string, RegExp[]> = {
   KOSPI: [/韩国综合/, /KOSPI/i, /韩国综合股价/, /韩综指/, /韩国.*综合.*指数/]
 };
 
+export function isExcludedIndexDiscoveryName(name: string, targetCode: string): boolean {
+  if (targetCode === "NASDAQ_100" && /科技|生物|汽车|油气|石油|消费|价值|质量|低波/.test(name)) return true;
+  if (targetCode === "KOSPI" && /半导体|中韩半导体|中韩芯片|芯片ETF|931790/i.test(name)) return true;
+  return false;
+}
+
 export function matchesDiscoveryNameHint(name: string, targetCode: string): boolean {
-  if (targetCode === "NASDAQ_100" && /科技|生物|汽车|油气|石油|消费|价值|质量|低波/.test(name)) return false;
-  if (targetCode === "KOSPI" && /半导体|中韩半导体|中韩芯片|芯片ETF|931790/i.test(name)) return false;
+  if (isExcludedIndexDiscoveryName(name, targetCode)) return false;
   const hints = INDEX_DISCOVERY_NAME_HINTS[targetCode] ?? [];
   return hints.some((pattern) => pattern.test(name));
 }
