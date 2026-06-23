@@ -71,7 +71,8 @@ const DISCOVERY_SOURCE_LABELS: Record<DiscoverySource, string> = {
   "fundcode-search": "代码库",
   "catalog-seed": "结构种子",
   "stock-scan": "持仓扫描",
-  "qdii-holdings-scan": "季报持仓扫描"
+  "qdii-holdings-scan": "季报持仓扫描",
+  "holdings-disclosure": "持仓披露"
 };
 
 export function formatDiscoverySourceLabel(source: string | null | undefined): string {
