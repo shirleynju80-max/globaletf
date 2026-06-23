@@ -7,7 +7,7 @@ export interface ApiProxyConfig {
   originHost?: string;
 }
 
-const DEFAULT_ORIGIN_IP = "8.147.67.18";
+const DEFAULT_ORIGIN_IP = "47.100.5.7";
 
 export function parseHttpsOrigin(value: string | undefined): string | null {
   if (!value?.trim()) return null;

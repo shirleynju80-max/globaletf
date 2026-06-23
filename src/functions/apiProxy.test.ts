@@ -14,10 +14,10 @@ describe("api proxy", () => {
   });
 
   it("falls back to sslip when no tunnel URL", () => {
-    expect(upstreamHostForIp("8.147.67.18")).toBe("8-147-67-18.sslip.io");
+    expect(upstreamHostForIp("47.100.5.7")).toBe("47-100-5-7.sslip.io");
     const config = buildApiProxyConfig(new URL("https://globaletf.pages.dev/api/health"), "health", {});
     expect(config.mode).toBe("sslip");
-    expect(config.fetchUrl).toBe("http://8-147-67-18.sslip.io/api/health");
-    expect(config.originHost).toBe("8.147.67.18");
+    expect(config.fetchUrl).toBe("http://47-100-5-7.sslip.io/api/health");
+    expect(config.originHost).toBe("47.100.5.7");
   });
 });
