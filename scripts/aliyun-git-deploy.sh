@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 # Pull latest globaletf from GitHub into /opt/globaletf and restart the API.
 # Preserves data/ and logs/ (gitignored). Run on Aliyun as root.
+#
+# Note: mainland ECS often cannot reach github.com. If fetch fails, deploy from
+# your laptop instead: bash scripts/deploy-to-aliyun.sh
 set -euo pipefail
 
 ROOT="${GLOBALETF_ROOT:-/opt/globaletf}"
@@ -51,7 +54,11 @@ cmd_install() {
   if ! git remote get-url origin >/dev/null 2>&1; then
     git remote add origin "$REPO"
   fi
-  git fetch origin "$BRANCH"
+  git fetch origin "$BRANCH" || {
+    echo "git fetch failed (GitHub often blocked on mainland ECS)."
+    echo "From your laptop run: bash scripts/deploy-to-aliyun.sh"
+    exit 1
+  }
   git checkout -B "$BRANCH" "origin/$BRANCH"
 
   install_deps
@@ -77,7 +84,11 @@ cmd_update() {
 
   cd "$ROOT"
   prepare_git
-  git fetch origin "$BRANCH"
+  git fetch origin "$BRANCH" || {
+    echo "git fetch failed (GitHub often blocked on mainland ECS)."
+    echo "From your laptop run: bash scripts/deploy-to-aliyun.sh"
+    exit 1
+  }
   git reset --hard "origin/$BRANCH"
 
   install_deps

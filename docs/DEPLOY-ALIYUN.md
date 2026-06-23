@@ -115,26 +115,23 @@ CERTBOT_EMAIL=you@example.com bash /opt/globaletf/scripts/aliyun-enable-https.sh
 
 ---
 
-## 代码更新（Git，推荐）
+## 代码更新
 
-服务器保留 `data/`、`logs/`（已在 `.gitignore`），用 Git 拉取代替 scp 单文件。
-
-**首次**（已有 `/opt/globaletf` 目录时）：
+大陆 ECS **通常无法直连 GitHub**。推荐从本机推送代码：
 
 ```sh
-chmod +x /opt/globaletf/scripts/aliyun-git-deploy.sh
-bash /opt/globaletf/scripts/aliyun-git-deploy.sh install
+# 在本机仓库根目录（需 SSH 到 47.100.5.7）
+bash scripts/deploy-to-aliyun.sh
 ```
 
-**日常更新**（`main` 有新 commit 后）：
+会 rsync 当前 git 工作区 → 服务器 `npm ci` + `build` + 重启，并写入 `.deploy-rev` 记录 commit。
+
+若服务器能访问 GitHub，也可在服务器上：
 
 ```sh
-bash /opt/globaletf/scripts/aliyun-git-deploy.sh update
+bash /opt/globaletf/scripts/aliyun-git-deploy.sh install   # 首次
+bash /opt/globaletf/scripts/aliyun-git-deploy.sh update    # 日常
 ```
-
-脚本会 `git fetch` + `reset --hard origin/main`、`npm ci`、`npm run build`、`systemctl restart globaletf`。
-
-私有仓库需先在服务器配置 deploy key 或 `git config credential.helper`。
 
 ---
 
@@ -146,7 +143,7 @@ bash /opt/globaletf/scripts/aliyun-git-deploy.sh update
 | 重启 | `systemctl restart globaletf` |
 | 应用日志 | `tail -f /opt/globaletf/logs/app.log` |
 | 同步日志 | `tail -f /opt/globaletf/logs/daily-sync.log` |
-| **更新代码** | `bash /opt/globaletf/scripts/aliyun-git-deploy.sh update` |
+| **更新代码** | 本机 `bash scripts/deploy-to-aliyun.sh` |
 | 手动全量同步 | `cd /opt/globaletf && npm run sync:daily` |
 | 备份 DB | `cp /opt/globaletf/data/etflimit.sqlite ~/backup-$(date +%F).sqlite` |
 
@@ -168,7 +165,8 @@ docker compose -f docker-compose.aliyun.yml up -d --build
 |------|------|
 | `deploy/globaletf.service` | systemd 单元 |
 | `scripts/baota-systemd-deploy.sh` | 宝塔一键部署 |
-| `scripts/aliyun-git-deploy.sh` | Git 拉取更新（推荐） |
+| `scripts/aliyun-git-deploy.sh` | 服务器 git pull（需能访问 GitHub） |
+| `scripts/deploy-to-aliyun.sh` | **本机 rsync 部署（大陆推荐）** |
 | `scripts/daily-sync.sh` / `limits-sync.sh` | cron 包装脚本 |
 | `deploy/nginx-globaletf.conf` | 域名 + Nginx 反代 |
 
