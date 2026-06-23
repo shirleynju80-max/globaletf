@@ -38,10 +38,6 @@ cmd_install() {
     echo "Missing $ROOT — copy the app there first or set GLOBALETF_ROOT."
     exit 1
   fi
-  if [[ -d "$ROOT/.git" ]]; then
-    echo "Git already initialized in $ROOT. Run: $0 update"
-    exit 0
-  fi
 
   cd "$ROOT"
   prepare_git
