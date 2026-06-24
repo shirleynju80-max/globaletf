@@ -124,7 +124,13 @@ CERTBOT_EMAIL=you@example.com bash /opt/globaletf/scripts/aliyun-enable-https.sh
 bash scripts/deploy-to-aliyun.sh
 ```
 
-会 rsync 当前 git 工作区 → 服务器 `npm ci` + `build` + 重启，并写入 `.deploy-rev` 记录 commit。
+会 tar 同步当前 git 工作区 → 服务器 `npm ci` + `build` + 重启，写入 `.deploy-rev`，并在服务器本地 **git commit**（不依赖 GitHub）。
+
+查看服务器部署版本：
+
+```sh
+ssh root@47.100.5.7 'bash /opt/globaletf/scripts/aliyun-git-deploy.sh status'
+```
 
 若服务器能访问 GitHub，也可在服务器上：
 
