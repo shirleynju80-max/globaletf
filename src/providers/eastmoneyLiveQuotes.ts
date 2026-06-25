@@ -77,7 +77,7 @@ export async function fetchLivePremiums(
     const resolved = resolveIopvPremium({
       price: livePrice?.price ?? null,
       priceTimeMs: livePrice?.priceTimeMs ?? null,
-      tradeDate,
+      tradeDate: livePrice?.priceTimeMs != null ? null : tradeDate,
       current: reference ? { iopv: reference.iopv, iopvTime: reference.iopvTime } : null,
       priorSnapshots: options.priorSnapshotsByCode?.get(code) ?? []
     });

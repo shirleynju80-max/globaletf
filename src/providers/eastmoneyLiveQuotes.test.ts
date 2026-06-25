@@ -63,6 +63,31 @@ describe("fetchLivePremiums", () => {
     expect(rows[0].iopv).toBe(2.25);
   });
 
+  it("uses the live price timestamp instead of a stale cached trade date", async () => {
+    const priceTimeMs = Date.UTC(2026, 5, 25, 2, 19);
+    const fetchImpl = vi.fn(async (url: Parameters<typeof fetch>[0]) => {
+      const u = String(url);
+      if (u.includes("ulist.np")) {
+        return new Response(JSON.stringify({ data: { diff: [{ f12: "161130", f2: 4.671, f441: 0, f124: Math.floor(priceTimeMs / 1000) }] } }), { status: 200 });
+      }
+      if (u.includes("fundgz.1234567.com.cn")) {
+        return new Response(`jsonpgz({"fundcode":"161130","jzrq":"2026-06-23","dwjz":"4.4423","gsz":"4.4240","gszzl":"-0.41","gztime":"2026-06-25 04:00"});`, { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const rows = await fetchLivePremiums(fetchImpl, ["161130"], {
+      tradeDateByCode: new Map([["161130", "2026-06-19"]]),
+      priorSnapshotsByCode: new Map([["161130", [
+        { iopv: 4.5896, iopvTime: "2026-06-19 04:00", iopvTimeMs: parseBeijingTimeMs("2026-06-19 04:00")! }
+      ]]])
+    });
+
+    expect(rows[0].iopv).toBe(4.424);
+    expect(rows[0].iopvTime).toBe("2026-06-25 04:00");
+    expect(rows[0].iopvPremiumDiscountRate).toBeCloseTo((4.671 - 4.424) / 4.424, 4);
+  });
+
   it("returns null premium when live price is unavailable", async () => {
     const fetchImpl = vi.fn(async () => new Response("err", { status: 502 })) as unknown as typeof fetch;
     const rows = await fetchLivePremiums(fetchImpl, ["159632"]);
