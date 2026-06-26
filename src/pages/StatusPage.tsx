@@ -56,7 +56,7 @@ export function StatusPage() {
           </ul>
         </div>
       ) : status ? (
-        <p className="note">各域状态均为正常（无 error）。fallback 表示使用了备用源或缓存，见上方明细。</p>
+        <p className="note">未出现同步失败。备用源/缓存表示该数据域本次未完全刷新，页面会继续使用最近可用数据；其他已入库数据仍会继续更新。</p>
       ) : null}
       <p className="note">
         服务器可定时执行 <code>npm run health-check</code>（含 acceptance 门禁）。

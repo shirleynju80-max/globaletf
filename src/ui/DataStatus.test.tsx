@@ -31,4 +31,34 @@ describe("DataStatus", () => {
     expect(screen.getByText(/持仓：正常/)).toBeInTheDocument();
     expect(screen.getByText(/280条/)).toBeInTheDocument();
   });
+
+  it("explains fund local-cache fallback without exposing raw backend messages", () => {
+    render(
+      <DataStatus
+        status={{
+          fund: {
+            area: "fund",
+            status: "fallback",
+            source: "local-cache",
+            dataDate: "2026-06-26",
+            itemCount: 364,
+            freshItemCount: 0,
+            cachedItemCount: 364,
+            durationMs: 1105,
+            errorCategory: null,
+            message: "terminated",
+            updatedAt: "2026-06-26T00:31:04.322Z"
+          }
+        }}
+      />
+    );
+
+    const fundStatus = screen.getByText(/基金：沿用缓存/);
+    expect(fundStatus).toHaveTextContent("基金列表本次发现未完成，已使用最近可用列表");
+    expect(fundStatus).toHaveTextContent("本地缓存");
+    expect(fundStatus).toHaveTextContent("364条");
+    expect(fundStatus).toHaveTextContent("刷新0条");
+    expect(fundStatus).toHaveTextContent("缓存364条");
+    expect(screen.queryByText(/terminated/)).not.toBeInTheDocument();
+  });
 });
