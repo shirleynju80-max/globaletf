@@ -74,6 +74,18 @@ export async function fetchLivePremiums(
       ? { price: quoteRow.lastPrice, priceTimeMs: quoteRow.priceTimeMs }
       : null;
     const reference = mergeQuoteListIopv(quoteRow, fallbacks[index], tradeDate);
+    if (!livePrice && reference?.iopv != null && reference.iopvTime) {
+      return {
+        fundCode: code,
+        price: null,
+        priceTime: null,
+        iopv: reference.iopv,
+        iopvTime: reference.iopvTime,
+        iopvPremiumDiscountRate: null,
+        aligned: null,
+        iopvSource: "current" as const
+      };
+    }
     const resolved = resolveIopvPremium({
       price: livePrice?.price ?? null,
       priceTimeMs: livePrice?.priceTimeMs ?? null,

@@ -227,6 +227,25 @@ describe("IndexComparison", () => {
     expect(screen.getByText("估值缺失")).toBeInTheDocument();
   });
 
+  it("distinguishes missing price from missing IOPV", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [{ code: "513100", name: "纳指ETF", closePrice: 1.23, closingPremiumDiscountRate: 0.012, iopvPremiumDiscountRate: null, turnover: 120000000, tradeDate: "2026-06-08", source: "eastmoney" }],
+          offExchange: []
+        }}
+        liveAsOf="2026-06-26T02:19:00.000Z"
+        livePremiums={{
+          "513100": { price: null, priceTime: null, iopv: 2.0036, iopvTime: "2026-06-26 10:19", iopvPremiumDiscountRate: null, aligned: null, iopvSource: "current" }
+        }}
+      />
+    );
+
+    expect(screen.getByText("价格缺失")).toBeInTheDocument();
+    expect(screen.queryByText("估值缺失")).not.toBeInTheDocument();
+  });
+
   it("shows a clear placeholder when NAV is missing", () => {
     render(
       <IndexComparison

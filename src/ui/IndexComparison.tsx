@@ -416,6 +416,7 @@ function formatPrimaryPremium(
   liveError: string | null | undefined
 ): string {
   if (live?.iopvPremiumDiscountRate != null) return formatPercent(live.iopvPremiumDiscountRate);
+  if (live?.iopv != null && live.price == null) return "价格缺失";
   if (isLivePending(liveAsOf, liveError)) return "—";
   return "估值缺失";
 }

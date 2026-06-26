@@ -95,6 +95,30 @@ describe("fetchLivePremiums", () => {
     expect(rows[0].iopvPremiumDiscountRate).toBeNull();
   });
 
+  it("keeps the IOPV estimate when the fund has no live traded price", async () => {
+    const priceTimeMs = Date.UTC(2026, 5, 26, 2, 19);
+    const fetchImpl = vi.fn(async (url: Parameters<typeof fetch>[0]) => {
+      const u = String(url);
+      if (u.includes("ulist.np")) {
+        return new Response(JSON.stringify({
+          data: { diff: [{ f12: "513100", f2: 0, f18: 2.208, f441: 2.0036, f124: Math.floor(priceTimeMs / 1000) }] }
+        }), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const rows = await fetchLivePremiums(fetchImpl, ["513100"]);
+
+    expect(rows[0]).toMatchObject({
+      fundCode: "513100",
+      price: null,
+      iopv: 2.0036,
+      iopvTime: "2026-06-26 10:19",
+      iopvPremiumDiscountRate: null,
+      iopvSource: "current"
+    });
+  });
+
   it("matches East Money app premium for 159659-style quote list rows", async () => {
     const fetchImpl = vi.fn(async (url: Parameters<typeof fetch>[0]) => {
       if (String(url).includes("ulist.np")) {
