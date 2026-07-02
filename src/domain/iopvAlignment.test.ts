@@ -71,6 +71,23 @@ describe("iopvAlignment", () => {
     expect(result.iopvTime).toBe("2026-06-13 04:00");
   });
 
+  it("does not pair a stale prior IOPV or future current estimate with a later trade date", () => {
+    const result = resolveIopvPremium({
+      price: 4.685,
+      priceTimeMs: tradeDateCloseMs("2026-07-01")!,
+      tradeDate: "2026-07-01",
+      current: { iopv: 4.5056, iopvTime: "2026-07-02 04:00" },
+      priorSnapshots: [
+        { iopv: 4.6108, iopvTime: "2026-06-16 04:00", iopvTimeMs: parseBeijingTimeMs("2026-06-16 04:00")! }
+      ]
+    });
+
+    expect(result.iopv).toBeNull();
+    expect(result.iopvTime).toBeNull();
+    expect(result.iopvPremiumDiscountRate).toBeNull();
+    expect(result.iopvSource).toBe("none");
+  });
+
   it("derives Beijing trade date from price time when tradeDate is omitted", () => {
     const priceTimeMs = tradeDateCloseMs("2026-06-12")!;
     expect(beijingDateFromMs(priceTimeMs)).toBe("2026-06-12");

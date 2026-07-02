@@ -11,6 +11,8 @@ import { mapConcurrent } from "./requestUtils";
 
 export { parseBeijingTimeMs } from "../domain/iopvAlignment";
 
+export type LivePremiumReferenceMode = "iopv" | "nav";
+
 export interface LivePrice {
   price: number;
   priceTimeMs: number | null;
@@ -24,7 +26,7 @@ export interface LivePremiumRow {
   iopvTime: string | null;
   iopvPremiumDiscountRate: number | null;
   aligned: boolean | null;
-  iopvSource: "current" | "trade_date_match" | "none";
+  iopvSource: "current" | "trade_date_match" | "none" | "nav";
 }
 
 export function parseLivePrices(payload: unknown): Map<string, LivePrice> {
@@ -40,6 +42,7 @@ export interface FetchLivePremiumsOptions {
   timeoutMs?: number;
   priorSnapshotsByCode?: Map<string, IopvPoint[]>;
   tradeDateByCode?: Map<string, string>;
+  referenceModeByCode?: Map<string, LivePremiumReferenceMode>;
 }
 
 export async function fetchLivePremiums(
@@ -54,6 +57,24 @@ export async function fetchLivePremiums(
   return codes.map((code, index) => {
     const quoteRow = quoteListByCode.get(code) ?? null;
     const tradeDate = options.tradeDateByCode?.get(code) ?? null;
+    const referenceMode = options.referenceModeByCode?.get(code) ?? "iopv";
+    const livePrice = quoteRow?.lastPrice != null
+      ? { price: quoteRow.lastPrice, priceTimeMs: quoteRow.priceTimeMs }
+      : null;
+    const navReference = referenceMode === "nav" ? disclosedNavReference(fallbacks[index]) : null;
+
+    if (referenceMode === "nav" && navReference) {
+      return {
+        fundCode: code,
+        price: livePrice?.price ?? null,
+        priceTime: livePrice?.priceTimeMs != null ? new Date(livePrice.priceTimeMs).toISOString() : null,
+        iopv: navReference.iopv,
+        iopvTime: navReference.iopvTime,
+        iopvPremiumDiscountRate: livePrice ? calculateIopvPremiumDiscount(livePrice.price, navReference.iopv) : null,
+        aligned: null,
+        iopvSource: "nav" as const
+      };
+    }
 
     // East Money app pairs f2 and f441 from the same quote-list snapshot — use directly.
     if (quoteRow?.lastPrice != null && quoteRow.iopv != null) {
@@ -70,9 +91,6 @@ export async function fetchLivePremiums(
       };
     }
 
-    const livePrice = quoteRow?.lastPrice != null
-      ? { price: quoteRow.lastPrice, priceTimeMs: quoteRow.priceTimeMs }
-      : null;
     const reference = mergeQuoteListIopv(quoteRow, fallbacks[index], tradeDate);
     if (!livePrice && reference?.iopv != null && reference.iopvTime) {
       return {
@@ -104,4 +122,9 @@ export async function fetchLivePremiums(
       iopvSource: resolved.iopvSource
     };
   });
+}
+
+function disclosedNavReference(fallback: Awaited<ReturnType<typeof fetchFundReferenceEstimate>>): { iopv: number; iopvTime: string } | null {
+  if (fallback?.unitNav == null || !fallback.navDate) return null;
+  return { iopv: fallback.unitNav, iopvTime: `${fallback.navDate} 15:00` };
 }

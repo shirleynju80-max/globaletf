@@ -124,7 +124,7 @@ export function createEastMoneyOnExchangeQuoteProvider(funds: Fund[], options: P
         const quoteRow = quoteListByCode.get(fund.code) ?? spotByCode.get(fund.code)?.quoteRow ?? null;
         const kline = await safeFetchPreviousDayKline(fetchImpl, fund.code, dataDate, timeoutMs);
         if (kline) {
-          return buildQuote(fetchImpl, fund.code, {
+          return buildQuote(fetchImpl, fund, {
             closePrice: kline.closePrice,
             turnover: kline.turnover,
             tradeDate: kline.tradeDate,
@@ -134,7 +134,7 @@ export function createEastMoneyOnExchangeQuoteProvider(funds: Fund[], options: P
         }
         const spot = spotByCode.get(fund.code);
         if (!spot) return null;
-        return buildQuote(fetchImpl, fund.code, {
+        return buildQuote(fetchImpl, fund, {
           closePrice: spot.closePrice,
           turnover: undefined,
           tradeDate: spot.tradeDate,
@@ -158,24 +158,26 @@ export function createEastMoneyOnExchangeQuoteProvider(funds: Fund[], options: P
 
 async function buildQuote(
   fetchImpl: typeof fetch,
-  fundCode: string,
+  fund: Fund,
   price: { closePrice: number; turnover?: number; tradeDate: string; source: string; syncRunId: string },
   timeoutMs: number,
   quoteRow: EastMoneyQuoteListRow | null = null
 ): Promise<FundQuote> {
-  const fallback = await fetchFundReferenceEstimate(fetchImpl, fundCode, timeoutMs);
+  const fallback = await fetchFundReferenceEstimate(fetchImpl, fund.code, timeoutMs);
   const reference = mergeQuoteListIopv(quoteRow, fallback, price.tradeDate);
-  const nav = await resolveNav(fetchImpl, fundCode, reference, timeoutMs);
-  const iopv = reference?.iopv ?? null;
+  const nav = await resolveNav(fetchImpl, fund.code, reference, timeoutMs);
+  const usesNavReference = fund.shareClass === "LOF";
+  const iopv = usesNavReference ? nav?.unitNav ?? null : reference?.iopv ?? null;
+  const iopvTime = usesNavReference && nav?.navDate ? `${nav.navDate} 15:00` : reference?.iopvTime ?? null;
   return {
-    fundCode,
+    fundCode: fund.code,
     closePrice: price.closePrice,
     turnover: price.turnover,
     tradeDate: price.tradeDate,
     unitNav: nav?.unitNav ?? null,
     navDate: nav?.navDate ?? null,
     iopv,
-    iopvTime: reference?.iopvTime ?? null,
+    iopvTime,
     iopvPremiumDiscountRate: calculateIopvPremiumDiscount(price.closePrice, iopv),
     closingPremiumDiscountRate: calculateClosingPremiumDiscount({
       closePrice: price.closePrice,

@@ -134,4 +134,29 @@ describe("fetchLivePremiums", () => {
     expect(rows[0].iopv).toBe(2.2354);
     expect(rows[0].iopvPremiumDiscountRate).toBeCloseTo(0.0732, 4);
   });
+
+  it("uses disclosed NAV for LOF live premium when quote-list IOPV is unavailable", async () => {
+    const priceTimeMs = Date.UTC(2026, 6, 2, 3, 50, 24);
+    const fetchImpl = vi.fn(async (url: Parameters<typeof fetch>[0]) => {
+      const u = String(url);
+      if (u.includes("ulist.np")) {
+        return new Response(JSON.stringify({
+          data: { diff: [{ f12: "161130", f2: 4.646, f441: 0, f124: Math.floor(priceTimeMs / 1000) }] }
+        }), { status: 200 });
+      }
+      if (u.includes("fundgz.1234567.com.cn")) {
+        return new Response(`jsonpgz({"fundcode":"161130","jzrq":"2026-06-30","dwjz":"4.5726","gsz":"4.5056","gszzl":"-1.47","gztime":"2026-07-02 04:00"});`, { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof fetch;
+
+    const rows = await fetchLivePremiums(fetchImpl, ["161130"], {
+      referenceModeByCode: new Map([["161130", "nav"]])
+    });
+
+    expect(rows[0].iopv).toBe(4.5726);
+    expect(rows[0].iopvTime).toBe("2026-06-30 15:00");
+    expect(rows[0].iopvPremiumDiscountRate).toBeCloseTo((4.646 - 4.5726) / 4.5726, 4);
+    expect(rows[0].iopvSource).toBe("nav");
+  });
 });

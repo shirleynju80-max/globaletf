@@ -1,5 +1,7 @@
 import { calculateIopvPremiumDiscount } from "./quotes";
 
+const MAX_PRIOR_IOPV_FALLBACK_DAYS = 3;
+
 export interface IopvPoint {
   iopv: number;
   /** Beijing-local timestamp, e.g. "2026-06-13 04:00". */
@@ -132,6 +134,8 @@ export function resolveIopvPremium(input: IopvResolveInput): ResolvedIopvPremium
   }
 
   if (currentIopv != null && currentTime) {
+    const currentMs = parseBeijingTimeMs(currentTime);
+    if (currentMs != null && currentMs > input.priceTimeMs) return base;
     return finish(base, input.price, input.priceTimeMs, currentIopv, currentTime, false, "current");
   }
 
@@ -157,7 +161,7 @@ function pickIopvForTradeDate(
   if (sameDay) return { iopv: sameDay.iopv, iopvTime: sameDay.iopvTime, source: "snapshot" };
 
   const priorOnOrBeforeTradeDate = snapshots
-    .filter((row) => row.iopvTime.slice(0, 10) <= tradeDate)
+    .filter((row) => row.iopvTime.slice(0, 10) <= tradeDate && daysBetween(row.iopvTime.slice(0, 10), tradeDate) <= MAX_PRIOR_IOPV_FALLBACK_DAYS)
     .sort((a, b) => b.iopvTime.localeCompare(a.iopvTime))[0];
   if (priorOnOrBeforeTradeDate) {
     return {
@@ -168,6 +172,13 @@ function pickIopvForTradeDate(
   }
 
   return null;
+}
+
+function daysBetween(fromDate: string, toDate: string): number {
+  const from = Date.parse(`${fromDate}T00:00:00.000Z`);
+  const to = Date.parse(`${toDate}T00:00:00.000Z`);
+  if (!Number.isFinite(from) || !Number.isFinite(to)) return Number.POSITIVE_INFINITY;
+  return Math.floor((to - from) / 86_400_000);
 }
 
 function finish(

@@ -80,7 +80,7 @@ describe("local API", () => {
         return new Response(JSON.stringify({ data: { diff: [{ f12: "513100", f2: 1.5, f124: 1781496792 }] } }), { status: 200 });
       }
       if (u.includes("fundgz.1234567.com.cn")) {
-        return new Response(`jsonpgz({"fundcode":"513100","jzrq":"2026-06-11","dwjz":"1.4","gsz":"1.4","gszzl":"0.1","gztime":"2026-06-15 14:00"});`, { status: 200 });
+        return new Response(`jsonpgz({"fundcode":"513100","jzrq":"2026-06-11","dwjz":"1.4","gsz":"1.4","gszzl":"0.1","gztime":"2026-06-15 04:00"});`, { status: 200 });
       }
       return new Response("not found", { status: 404 });
     }) as unknown as typeof fetch;
@@ -125,6 +125,37 @@ describe("local API", () => {
     expect(response.status).toBe(200);
     expect(data.rows).toHaveLength(1);
     expect(data.rows[0].fundCode).toBe("513100");
+  });
+
+  it("serves LOF live premium against disclosed NAV instead of fundgz estimate", async () => {
+    const db = createInMemoryDatabase();
+    await runDailySync(db);
+    const priceTimeMs = Date.UTC(2026, 6, 2, 3, 50, 24);
+    const fetchImpl = (async (url: Parameters<typeof fetch>[0]) => {
+      const u = String(url);
+      if (u.includes("ulist.np") && u.includes("161130")) {
+        return new Response(JSON.stringify({
+          data: { diff: [{ f12: "161130", f2: 4.646, f441: 0, f124: Math.floor(priceTimeMs / 1000) }] }
+        }), { status: 200 });
+      }
+      if (u.includes("fundgz.1234567.com.cn") && u.includes("161130")) {
+        return new Response(`jsonpgz({"fundcode":"161130","jzrq":"2026-06-30","dwjz":"4.5726","gsz":"4.5056","gszzl":"-1.47","gztime":"2026-07-02 04:00"});`, { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    }) as unknown as typeof fetch;
+    const app = createApp(db, { fetchImpl });
+    const server = app.listen(0);
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Expected TCP server address");
+
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/live-premium/NASDAQ_100?codes=161130`);
+    const data = await response.json();
+    server.close();
+
+    expect(response.status).toBe(200);
+    expect(data.rows).toHaveLength(1);
+    expect(data.rows[0]).toMatchObject({ fundCode: "161130", price: 4.646, iopv: 4.5726, iopvTime: "2026-06-30 15:00", iopvSource: "nav" });
+    expect(data.rows[0].iopvPremiumDiscountRate).toBeCloseTo((4.646 - 4.5726) / 4.5726, 4);
   });
 
   it("serves discovery health for a target", async () => {

@@ -97,7 +97,8 @@ export function createApp(db: Database.Database, options: CreateAppOptions = {})
       const codes = selectedFunds.map((fund) => fund.code);
       const priorSnapshotsByCode = new Map(codes.map((code) => [code, queryPriorIopvSnapshots(db, code)]));
       const tradeDateByCode = queryLatestQuoteTradeDates(db, codes);
-      const premiums = await fetchLivePremiums(fetchImpl, codes, { priorSnapshotsByCode, tradeDateByCode });
+      const referenceModeByCode = new Map(selectedFunds.map((fund) => [fund.code, fund.shareClass === "LOF" ? "nav" : "iopv"] as const));
+      const premiums = await fetchLivePremiums(fetchImpl, codes, { priorSnapshotsByCode, tradeDateByCode, referenceModeByCode });
       const nameByCode = new Map(selectedFunds.map((fund) => [fund.code, fund.name]));
       res.json({
         asOf: new Date().toISOString(),

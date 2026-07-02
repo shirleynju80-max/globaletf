@@ -12,7 +12,7 @@ interface LivePremium {
   iopvTime: string | null;
   iopvPremiumDiscountRate: number | null;
   aligned: boolean | null;
-  iopvSource?: "current" | "trade_date_match" | "none";
+  iopvSource?: "current" | "trade_date_match" | "none" | "nav";
 }
 
 interface ComparisonRow {

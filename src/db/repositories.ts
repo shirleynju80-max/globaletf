@@ -380,13 +380,13 @@ function uniqueSnapshotTargets(funds: Fund[]): string[] {
   return [...new Set(funds.flatMap((fund) => (fund.trackingTargetCode ? [fund.trackingTargetCode] : [])))];
 }
 
-export function queryOnExchangeFundCodes(db: Database.Database, targetCode: string): Array<{ code: string; name: string }> {
+export function queryOnExchangeFundCodes(db: Database.Database, targetCode: string): Array<{ code: string; name: string; shareClass: string }> {
   const rows = db.prepare(`
-    SELECT code, name
+    SELECT code, name, share_class AS shareClass
     FROM funds
     WHERE tracking_target_code = ? AND venue = 'on_exchange' AND enabled = 1
     ORDER BY code
-  `).all(targetCode) as Array<{ code: string; name: string }>;
+  `).all(targetCode) as Array<{ code: string; name: string; shareClass: string }>;
   return rows.filter((row) => !isDelistedOnExchange(row.code));
 }
 
