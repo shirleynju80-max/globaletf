@@ -102,4 +102,20 @@ describe("limitText", () => {
       limitUnit: "per_day"
     });
   });
+
+  it("parses spaced direct-channel tables with USD share columns", () => {
+    const parsed = parseDirectLimitFromAnnouncement(
+      "下属分级基金的基金简称 摩根标普 500 指数 (QDII) 人民币 A 美钞 人民币 C 美汇 下属分级基金的交易代码 017641 017642 019305 017643 该分级基金是否暂停大额申购、大额转换转入、定期定额投资 是 是 是 是 下属分级基金的限制申购金额（单位：人 300.00 30.00 300.00 30.00 民币元） 下属分级基金的限制转换转入金额（单位：300.00 - 300.00 - 人民币元） 下属分级基金的限制定期定额投资金额 300.00 30.00 300.00 30.00 （单位：人民币元） 注:人民币份额的限制金额单位为人民币元，美元份额的限制金额单位为美元。本基金直销渠道投资者单个基金账户单个美元份额类别的单日申购及定期定额投资金额累计限额为 30.00 美元。",
+      "A",
+      "017642"
+    );
+
+    expect(parsed).toMatchObject({
+      status: "limited",
+      limitAmountYuan: undefined,
+      limitAmount: 30,
+      limitCurrency: "USD",
+      limitUnit: "per_day"
+    });
+  });
 });

@@ -112,7 +112,7 @@ export function parseDirectLimitFromAnnouncement(
   }
 
   if (fundCode) {
-    const tableAmount = parseFundCodeTableLimit(normalized, fundCode);
+    const tableAmount = parseFundCodeTableLimit(text, normalized, fundCode);
     if (tableAmount) {
       return {
         status: "limited",
@@ -191,7 +191,65 @@ export function parseDirectLimitFromAnnouncement(
   return null;
 }
 
-function parseFundCodeTableLimit(text: string, fundCode: string): ParsedMoneyLimit | undefined {
+function parseFundCodeTableLimit(rawText: string, normalizedText: string, fundCode: string): ParsedMoneyLimit | undefined {
+  return parseSpacedFundCodeTableLimit(rawText, fundCode) ?? parseCompactFundCodeTableLimit(normalizedText, fundCode);
+}
+
+function parseSpacedFundCodeTableLimit(text: string, fundCode: string): ParsedMoneyLimit | undefined {
+  const codeMatch = text.match(/交易代码\s+((?:\d{6}\s*){2,})/);
+  if (!codeMatch || codeMatch.index == null) return undefined;
+
+  const codes: string[] = codeMatch[1]?.match(/\d{6}/g) ?? [];
+  const codeIndex = codes.indexOf(fundCode);
+  if (codeIndex < 0) return undefined;
+
+  const tail = text.slice(codeMatch.index + codeMatch[0].length);
+  const amountMatch = tail.match(/限制申购金额([\s\S]{0,500}?)(?=下属分级基金的限制(?:转换|定期)|注[:：]|2\.)/);
+  if (!amountMatch) return undefined;
+
+  const amountSection = amountMatch[1].replace(/[（）()]/g, " ");
+  const values = [...amountSection.matchAll(/--|-|\d+(?:\.\d+)?(?:亿|万)?(?:元|人民币|美元|美金|USD)?/gi)]
+    .map((match) => match[0])
+    .filter((value) => value !== "-");
+  const value = values[codeIndex];
+  if (!value || value === "--") return undefined;
+
+  const explicitAmount = parseMoneyLimit(value);
+  if (explicitAmount) return explicitAmount;
+
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return undefined;
+  return {
+    amount,
+    currency: inferTableColumnCurrency(text, codeMatch.index, codes.length, codeIndex, amount)
+  };
+}
+
+function inferTableColumnCurrency(
+  text: string,
+  codeRowIndex: number,
+  codeCount: number,
+  codeIndex: number,
+  amount: number
+): LimitCurrency {
+  const labelStart = text.lastIndexOf("下属分级基金的基金简称", codeRowIndex);
+  const labelSection = text.slice(labelStart >= 0 ? labelStart : 0, codeRowIndex);
+  const labels = [...labelSection.matchAll(/人民币\s*[A-Z]?|美钞|美汇|美元(?:现钞|现汇)?|现钞|现汇/gi)]
+    .map((match) => match[0])
+    .slice(-codeCount);
+  const label = labels[codeIndex] ?? "";
+  if (/美钞|美汇|美元|现钞|现汇/i.test(label)) return "USD";
+
+  const normalized = text.replace(/\s+/g, "");
+  const amountPattern = amount.toFixed(2).replace(".", "\\.");
+  if (new RegExp(`美元份额[^。]{0,120}?限额为${amountPattern}(?:美元|美金|USD)`, "i").test(normalized)) {
+    return "USD";
+  }
+
+  return "CNY";
+}
+
+function parseCompactFundCodeTableLimit(text: string, fundCode: string): ParsedMoneyLimit | undefined {
   const codeMatch = text.match(/交易代码((?:\d{6}){2,})/) ?? text.match(/((?:\d{6}){2,})交易代码/);
   if (!codeMatch || codeMatch.index == null) return undefined;
 
