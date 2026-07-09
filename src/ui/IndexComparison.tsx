@@ -29,6 +29,8 @@ interface ComparisonRow {
   turnover?: number;
   tradeDate?: string;
   status?: string;
+  limitAmount?: number | null;
+  limitCurrency?: string | null;
   limitAmountYuan?: number | null;
   limitUnit?: string | null;
   limitDataDate?: string | null;
@@ -313,8 +315,7 @@ function sortOffExchangeByLimit(rows: ComparisonRow[], sortDesc: boolean): Compa
 
 function offExchangeLimitSortValue(row: ComparisonRow): number | null {
   if (row.status === "open") return Number.POSITIVE_INFINITY;
-  if (row.limitAmountYuan != null) return row.limitAmountYuan;
-  return null;
+  return row.limitAmount ?? row.limitAmountYuan ?? null;
 }
 
 function sortOnExchangeRows(
@@ -373,12 +374,19 @@ function formatCurrency(value?: number): string {
   return `${value.toLocaleString("zh-CN")} 元`;
 }
 
-function formatLimit(row: { status?: string; limitAmountYuan?: number | null; limitUnit?: string | null }): string {
-  if (row.limitAmountYuan != null) return `${formatCurrency(row.limitAmountYuan)}${formatLimitUnit(row.limitUnit)}`;
+function formatLimit(row: { status?: string; limitAmount?: number | null; limitCurrency?: string | null; limitAmountYuan?: number | null; limitUnit?: string | null }): string {
+  const amount = row.limitAmount ?? row.limitAmountYuan;
+  const currency = row.limitCurrency ?? (row.limitAmountYuan != null ? "CNY" : null);
+  if (amount != null) return `${formatLimitAmount(amount, currency)}${formatLimitUnit(row.limitUnit)}`;
   if (row.status === "open") return "开放申购，未披露限额";
   if (row.status === "limited") return "限额待确认";
   if (row.status === "suspended") return "暂停申购";
   return "-";
+}
+
+function formatLimitAmount(value: number, currency?: string | null): string {
+  if (currency === "USD") return `${value.toLocaleString("zh-CN")} 美元`;
+  return formatCurrency(value);
 }
 
 function formatLimitUnit(unit?: string | null): string {

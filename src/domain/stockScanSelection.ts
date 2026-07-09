@@ -13,7 +13,7 @@ export function isIndexTrackerSearchRow(row: FundSearchRow): boolean {
 }
 
 export function isStockScanShareClass(shareClass: ShareClass): boolean {
-  return shareClass === "ETF" || shareClass === "LOF" || shareClass === "A" || shareClass === "F";
+  return shareClass === "ETF" || shareClass === "LOF" || shareClass === "A" || shareClass === "C" || shareClass === "F";
 }
 
 export function resolveStockScanShareClass(row: FundSearchRow): ShareClass | undefined {

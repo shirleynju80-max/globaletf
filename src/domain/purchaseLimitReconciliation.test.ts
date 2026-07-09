@@ -136,7 +136,7 @@ describe("purchaseLimitReconciliation", () => {
     });
   });
 
-  it("flags cross-source status conflicts", () => {
+  it("resolves same-day source status differences deterministically without surfacing a conflict", () => {
     const reconciled = reconcilePurchaseLimit("A", [
       baseLimit({
         shareClass: "A",
@@ -150,15 +150,113 @@ describe("purchaseLimitReconciliation", () => {
       baseLimit({
         shareClass: "A",
         channelScope: "agency",
-        channelId: "eastmoney_aggregate",
-        source: "tiantian-f10-jjfl",
+        channelId: "aggregate",
+        source: "tiantian",
         status: "limited",
-        dataDate: "2026-06-15",
+        dataDate: "2026-06-16",
         limitAmountYuan: 1000
       })
     ]);
 
     expect(reconciled.status).toBe("limited");
-    expect(reconciled.statusConflict).toBe(true);
+    expect(reconciled.statusConflict).toBe(false);
+  });
+
+  it("keeps non-CNY limit amount and currency through reconciliation", () => {
+    const reconciled = reconcilePurchaseLimit("F", [
+      baseLimit({
+        shareClass: "F",
+        status: "limited",
+        limitAmountYuan: undefined,
+        limitAmount: 10,
+        limitCurrency: "USD",
+        dataDate: "2026-03-31"
+      })
+    ]);
+
+    expect(reconciled).toMatchObject({
+      status: "limited",
+      limitAmountYuan: undefined,
+      limitAmount: 10,
+      limitCurrency: "USD",
+      limitUnit: "per_day",
+      limitEffectiveDate: "2026-03-31"
+    });
+  });
+
+  it("does not flag historical suspended snapshots as conflict after status recovers", () => {
+    const reconciled = reconcilePurchaseLimit("A", [
+      baseLimit({
+        shareClass: "A",
+        channelScope: "agency",
+        channelId: "eastmoney_aggregate",
+        source: "tiantian-f10-jjfl",
+        status: "limited",
+        dataDate: "2026-07-06",
+        limitAmountYuan: 1000,
+        confidence: 0.9
+      }),
+      baseLimit({
+        shareClass: "A",
+        channelScope: "agency",
+        channelId: "eastmoney_aggregate",
+        source: "tiantian-f10-jjfl",
+        status: "suspended",
+        dataDate: "2026-07-02",
+        limitAmountYuan: 1000,
+        confidence: 0.9
+      })
+    ]);
+
+    expect(reconciled).toMatchObject({
+      status: "limited",
+      limitAmountYuan: 1000,
+      limitEffectiveDate: "2026-07-06",
+      statusConflict: false
+    });
+  });
+
+  it("clears review flags for C-share funds like 012752 after temporary suspension", () => {
+    const reconciled = reconcilePurchaseLimit("C", [
+      baseLimit({
+        fundCode: "012752",
+        shareClass: "C",
+        channelScope: "agency",
+        channelId: "eastmoney_aggregate",
+        source: "tiantian-f10-jjfl",
+        status: "limited",
+        dataDate: "2026-07-07",
+        limitAmountYuan: 100,
+        confidence: 0.9
+      }),
+      baseLimit({
+        fundCode: "012752",
+        shareClass: "C",
+        channelScope: "agency",
+        channelId: "eastmoney_aggregate",
+        source: "tiantian-f10-jjfl",
+        status: "suspended",
+        dataDate: "2026-07-02",
+        limitAmountYuan: 100,
+        confidence: 0.9
+      }),
+      baseLimit({
+        fundCode: "012752",
+        shareClass: "C",
+        channelScope: "agency",
+        channelId: "aggregate",
+        source: "tiantian-f10-jjfl",
+        status: "limited",
+        dataDate: "2026-06-16",
+        limitAmountYuan: 100,
+        confidence: 0.9
+      })
+    ]);
+
+    expect(reconciled).toMatchObject({
+      status: "limited",
+      limitAmountYuan: 100,
+      statusConflict: false
+    });
   });
 });

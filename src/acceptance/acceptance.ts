@@ -30,7 +30,7 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
   const nikkeiComparison = comparisons.find((entry) => entry.target.code === "NIKKEI_225")?.comparison ?? { onExchange: [], offExchange: [] };
   const stockConcentration = queryStockConcentration(db, "NVDA").rows;
   const nasdaqOnExchangePricedRows = nasdaqComparison.onExchange.filter((row) => row.closePrice != null);
-  const nasdaqOffExchangeLimitRows = nasdaqComparison.offExchange.filter((row) => row.limitAmountYuan != null || row.status === "open" || row.status === "limited");
+  const nasdaqOffExchangeLimitRows = nasdaqComparison.offExchange.filter((row) => row.limitAmount != null || row.limitAmountYuan != null || row.status === "open" || row.status === "limited");
   const nasdaqOffExchangeFeeRows = nasdaqComparison.offExchange.filter((row) =>
     row.defaultSubscriptionRate != null ||
     row.managementRate != null ||
@@ -40,7 +40,7 @@ export function runAcceptance(db: Database.Database): AcceptanceResult {
   );
   const offExchangeStockConcentration = stockConcentration.filter((row) => row.venue === "off_exchange");
   const strictStockPurchaseAvailabilityRows = offExchangeStockConcentration.filter(requiresStockPurchaseAvailabilityCoverage);
-  const offExchangeStockLimitsWithAmounts = offExchangeStockConcentration.filter((row) => row.limitAmountYuan != null);
+  const offExchangeStockLimitsWithAmounts = offExchangeStockConcentration.filter((row) => row.limitAmount != null || row.limitAmountYuan != null);
 
   const checks: AcceptanceCheck[] = [
     checkStatus(status),
@@ -188,6 +188,7 @@ function requiresStockPurchaseAvailabilityCoverage(row: StockConcentrationRow): 
 }
 
 function hasStockPurchaseAvailabilityCoverage(row: StockConcentrationRow): boolean {
+  if (row.limitAmount != null) return true;
   if (row.limitAmountYuan != null) return true;
   if (row.purchaseStatus == null) return false;
   if (row.purchaseStatus !== "unknown") return true;

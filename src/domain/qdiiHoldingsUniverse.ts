@@ -7,7 +7,7 @@ export function resolveHoldingsScanShareClass(row: FundSearchRow): ShareClass | 
   if (shareClass === "I" && /\(QDII\)$/.test(normalizedName)) {
     shareClass = "UNKNOWN";
   }
-  if (shareClass === "ETF" || shareClass === "LOF" || shareClass === "A" || shareClass === "F") {
+  if (shareClass === "ETF" || shareClass === "LOF" || shareClass === "A" || shareClass === "C" || shareClass === "F") {
     return shareClass;
   }
   const haystack = `${row.type} ${row.name}`;

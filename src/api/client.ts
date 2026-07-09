@@ -1,3 +1,4 @@
+import type { FundReturnSnapshot } from "../domain/fundReturnPeriods";
 import type { Target } from "../domain/types";
 import type { StockConcentrationMeta, StockConcentrationResult, StockConcentrationRow, SyncStatusMap, IndexComparisonResult, LandingStats } from "../db/repositories";
 
@@ -42,6 +43,18 @@ function normalizeStockConcentrationResult(data: unknown): StockConcentrationRes
     };
   }
   return { rows: [], meta: emptyMeta };
+}
+
+export async function fetchFundReturns(
+  rows: Pick<StockConcentrationRow, "fundCode" | "venue">[]
+): Promise<Record<string, FundReturnSnapshot>> {
+  if (rows.length === 0) return {};
+  const codes = rows.map((row) => row.fundCode).join(",");
+  const venues = rows.map((row) => row.venue).join(",");
+  const response = await fetch(`${API_BASE}/api/fund-returns?codes=${encodeURIComponent(codes)}&venues=${encodeURIComponent(venues)}`);
+  if (!response.ok) throw new Error(`Failed to fetch fund returns: ${response.status}`);
+  const data = await response.json() as { returns?: Record<string, FundReturnSnapshot> };
+  return data.returns ?? {};
 }
 
 export async function fetchSyncStatus(): Promise<SyncStatusMap> {

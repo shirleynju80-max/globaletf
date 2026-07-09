@@ -36,6 +36,8 @@ export function migrate(db: Database.Database): void {
       fund_code TEXT NOT NULL,
       share_class TEXT NOT NULL,
       status TEXT NOT NULL,
+      limit_amount REAL,
+      limit_currency TEXT,
       limit_amount_yuan REAL,
       limit_unit TEXT,
       channel_scope TEXT NOT NULL,
@@ -149,6 +151,15 @@ export function migrate(db: Database.Database): void {
       sync_run_id TEXT NOT NULL,
       PRIMARY KEY (stock_key, fund_code, report_period, source)
     );
+
+    CREATE TABLE IF NOT EXISTS fund_return_snapshots (
+      fund_code TEXT PRIMARY KEY,
+      venue TEXT NOT NULL,
+      as_of_date TEXT NOT NULL,
+      returns_json TEXT NOT NULL,
+      sync_run_id TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
   `);
 
   relaxLegacyQuotePremiumConstraint(db);
@@ -158,6 +169,7 @@ export function migrate(db: Database.Database): void {
   addQuoteIopvColumns(db);
   addQuoteAlignmentColumns(db);
   addPurchaseLimitChannelIdColumn(db);
+  addPurchaseLimitCurrencyColumns(db);
 }
 
 function relaxLegacyQuotePremiumConstraint(db: Database.Database): void {
@@ -284,6 +296,8 @@ function addPurchaseLimitChannelIdColumn(db: Database.Database): void {
       fund_code TEXT NOT NULL,
       share_class TEXT NOT NULL,
       status TEXT NOT NULL,
+      limit_amount REAL,
+      limit_currency TEXT,
       limit_amount_yuan REAL,
       limit_unit TEXT,
       channel_scope TEXT NOT NULL,
@@ -296,12 +310,29 @@ function addPurchaseLimitChannelIdColumn(db: Database.Database): void {
     );
 
     INSERT INTO purchase_limits (
-      fund_code, share_class, status, limit_amount_yuan, limit_unit, channel_scope, channel_id, source, data_date, confidence, sync_run_id
+      fund_code, share_class, status, limit_amount, limit_currency, limit_amount_yuan, limit_unit, channel_scope, channel_id, source, data_date, confidence, sync_run_id
     )
     SELECT
-      fund_code, share_class, status, limit_amount_yuan, limit_unit, channel_scope, 'aggregate', source, data_date, confidence, sync_run_id
+      fund_code, share_class, status, limit_amount_yuan, CASE WHEN limit_amount_yuan IS NOT NULL THEN 'CNY' ELSE NULL END, limit_amount_yuan, limit_unit, channel_scope, 'aggregate', source, data_date, confidence, sync_run_id
     FROM purchase_limits_legacy;
 
     DROP TABLE purchase_limits_legacy;
   `);
+}
+
+function addPurchaseLimitCurrencyColumns(db: Database.Database): void {
+  const table = db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'purchase_limits'").get();
+  if (!table) return;
+
+  const columns = db.prepare("PRAGMA table_info(purchase_limits)").all() as Array<{ name: string }>;
+  const names = new Set(columns.map((column) => column.name));
+
+  if (!names.has("limit_amount")) {
+    db.exec("ALTER TABLE purchase_limits ADD COLUMN limit_amount REAL");
+    db.exec("UPDATE purchase_limits SET limit_amount = limit_amount_yuan WHERE limit_amount_yuan IS NOT NULL");
+  }
+  if (!names.has("limit_currency")) {
+    db.exec("ALTER TABLE purchase_limits ADD COLUMN limit_currency TEXT");
+    db.exec("UPDATE purchase_limits SET limit_currency = 'CNY' WHERE limit_amount_yuan IS NOT NULL AND limit_currency IS NULL");
+  }
 }

@@ -11,18 +11,20 @@ describe("offExchangePartition", () => {
     ];
 
     expect(partitionOffExchangeRows(rows)).toEqual({
-      active: [{ code: "a", status: "limited", limitAmountYuan: 1000 }],
-      review: [
-        { code: "b", status: "limited", limitStale: true },
+      active: [
+        { code: "a", status: "limited", limitAmountYuan: 1000 },
         { code: "d", status: "limited", limitStatusConflict: true }
+      ],
+      review: [
+        { code: "b", status: "limited", limitStale: true }
       ],
       suspended: [{ code: "c", status: "suspended" }]
     });
   });
 
-  it("treats stale or conflict flags as review", () => {
+  it("treats stale rows as review without letting diagnostic conflicts change the chosen status bucket", () => {
     expect(needsLimitReview({ limitStale: true })).toBe(true);
-    expect(needsLimitReview({ limitStatusConflict: true })).toBe(true);
+    expect(needsLimitReview({ limitStatusConflict: true })).toBe(false);
     expect(needsLimitReview({ status: "limited" })).toBe(false);
   });
 });

@@ -9,7 +9,9 @@ import { INDEX_TARGETS_PENDING_UNTIL_FUNDS, indexTargetHasFunds } from "../domai
 import { STOCK_TARGETS } from "../domain/targets";
 import type { FundSearchRow } from "../providers/eastmoneyFundSearch";
 import { reconcilePurchaseLimit } from "../domain/purchaseLimitReconciliation";
-import type { FeeTier, FeeType, Fund, FundHolding, FundQuote, PurchaseLimit, ShareClass } from "../domain/types";
+import type { FundReturnPeriod, FundReturnSnapshot } from "../domain/fundReturnPeriods";
+import { FUND_RETURN_PERIODS } from "../domain/fundReturnPeriods";
+import type { FeeTier, FeeType, Fund, FundHolding, FundQuote, PurchaseLimit, ProductVenue, ShareClass } from "../domain/types";
 
 export interface SnapshotBundle {
   syncRunId: string;
@@ -35,6 +37,8 @@ export interface IndexComparisonRow {
   turnover?: number;
   tradeDate?: string;
   status?: string;
+  limitAmount?: number | null;
+  limitCurrency?: string | null;
   limitAmountYuan?: number;
   limitUnit?: string | null;
   limitDataDate?: string | null;
@@ -80,6 +84,8 @@ export interface StockConcentrationRow {
   trackingTargetCode?: string | null;
   parentFundCode?: string | null;
   purchaseStatus?: string | null;
+  limitAmount?: number | null;
+  limitCurrency?: string | null;
   limitAmountYuan?: number | null;
   limitUnit?: string | null;
   limitDataDate?: string | null;
@@ -102,7 +108,7 @@ export interface StockConcentrationResult {
   meta: StockConcentrationMeta;
 }
 
-export type SyncStatusArea = "fund" | "quote" | "purchaseLimit" | "fee" | "holding";
+export type SyncStatusArea = "fund" | "quote" | "purchaseLimit" | "fee" | "holding" | "fundReturns";
 export type SyncStatusValue = "ok" | "fallback" | "error";
 
 export interface SyncStatusRow {
@@ -162,9 +168,9 @@ export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBund
   `);
   const insertLimit = db.prepare(`
     INSERT OR REPLACE INTO purchase_limits (
-      fund_code, share_class, status, limit_amount_yuan, limit_unit, channel_scope, channel_id, source, data_date, confidence, sync_run_id
+      fund_code, share_class, status, limit_amount, limit_currency, limit_amount_yuan, limit_unit, channel_scope, channel_id, source, data_date, confidence, sync_run_id
     ) VALUES (
-      @fundCode, @shareClass, @status, @limitAmountYuan, @limitUnit, @channelScope, @channelId, @source, @dataDate, @confidence, @syncRunId
+      @fundCode, @shareClass, @status, @limitAmount, @limitCurrency, @limitAmountYuan, @limitUnit, @channelScope, @channelId, @source, @dataDate, @confidence, @syncRunId
     )
   `);
   const insertFee = db.prepare(`
@@ -228,6 +234,8 @@ export function insertSnapshotBundle(db: Database.Database, bundle: SnapshotBund
     for (const limit of bundle.limits) {
       insertLimit.run({
         ...limit,
+        limitAmount: limit.limitAmount ?? limit.limitAmountYuan ?? null,
+        limitCurrency: limit.limitCurrency ?? (limit.limitAmountYuan != null ? "CNY" : null),
         limitAmountYuan: limit.limitAmountYuan ?? null,
         limitUnit: limit.limitUnit ?? null,
         channelId: limit.channelId ?? "aggregate"
@@ -458,7 +466,7 @@ function compareOnExchangeRows(a: IndexComparisonRow, b: IndexComparisonRow): nu
 function compareOffExchangeRows(a: IndexComparisonRow, b: IndexComparisonRow): number {
   const capacityRankDiff = purchaseCapacityRank(a) - purchaseCapacityRank(b);
   if (capacityRankDiff !== 0) return capacityRankDiff;
-  const limitDiff = (b.limitAmountYuan ?? -1) - (a.limitAmountYuan ?? -1);
+  const limitDiff = (limitSortAmount(b) ?? -1) - (limitSortAmount(a) ?? -1);
   if (limitDiff !== 0) return limitDiff;
   const visibleCostDiff = visibleFeeCost(a) - visibleFeeCost(b);
   if (Number.isFinite(visibleCostDiff) && visibleCostDiff !== 0) return visibleCostDiff;
@@ -468,8 +476,16 @@ function compareOffExchangeRows(a: IndexComparisonRow, b: IndexComparisonRow): n
 function purchaseCapacityRank(row: IndexComparisonRow): number {
   if (row.status === "suspended") return 3;
   if (row.status === "open") return 0;
-  if (row.limitAmountYuan != null) return 1;
+  if (hasLimitAmount(row)) return 1;
   return 2;
+}
+
+function hasLimitAmount(row: { limitAmount?: number | null; limitAmountYuan?: number | null }): boolean {
+  return limitSortAmount(row) != null;
+}
+
+function limitSortAmount(row: { limitAmount?: number | null; limitAmountYuan?: number | null }): number | null {
+  return row.limitAmount ?? row.limitAmountYuan ?? null;
 }
 
 function visibleFeeCost(row: IndexComparisonRow): number {
@@ -675,6 +691,8 @@ function enrichStockConcentrationPurchaseLimits(db: Database.Database, rows: Sto
     if (!limits.length) continue;
     const reconciled = reconcilePurchaseLimit(row.shareClass as ShareClass, limits);
     row.purchaseStatus = reconciled.status;
+    row.limitAmount = reconciled.limitAmount;
+    row.limitCurrency = reconciled.limitCurrency;
     row.limitAmountYuan = reconciled.limitAmountYuan;
     row.limitUnit = reconciled.limitUnit;
     row.limitDataDate = reconciled.limitEffectiveDate;
@@ -699,6 +717,8 @@ function loadPurchaseLimitsByFund(db: Database.Database, fundCodes: string[]): M
       fund_code AS fundCode,
       share_class AS shareClass,
       status,
+      limit_amount AS limitAmount,
+      limit_currency AS limitCurrency,
       limit_amount_yuan AS limitAmountYuan,
       limit_unit AS limitUnit,
       channel_scope AS channelScope,
@@ -725,6 +745,8 @@ function applyReconciledPurchaseLimit(
   reconciled: ReturnType<typeof reconcilePurchaseLimit>
 ): void {
   row.status = reconciled.status;
+  row.limitAmount = reconciled.limitAmount;
+  row.limitCurrency = reconciled.limitCurrency;
   row.limitAmountYuan = reconciled.limitAmountYuan;
   row.limitUnit = reconciled.limitUnit;
   row.limitDataDate = reconciled.limitEffectiveDate;
@@ -1084,4 +1106,121 @@ export function rebuildStockFundIndex(db: Database.Database, syncRunId: string):
   });
   tx();
   return rows.length;
+}
+
+export function queryEnabledFunds(db: Database.Database): Fund[] {
+  const rows = db.prepare(`
+    SELECT
+      code,
+      name,
+      fund_type AS fundType,
+      venue,
+      fund_company AS fundCompany,
+      tracking_target_code AS trackingTargetCode,
+      share_class AS shareClass,
+      parent_fund_code AS parentFundCode,
+      enabled
+    FROM funds
+    WHERE enabled = 1
+  `).all() as Array<{
+    code: string;
+    name: string;
+    fundType: Fund["fundType"];
+    venue: ProductVenue;
+    fundCompany: string | null;
+    trackingTargetCode: string | null;
+    shareClass: ShareClass;
+    parentFundCode: string | null;
+    enabled: number;
+  }>;
+
+  return rows.map((row) => ({
+    code: row.code,
+    name: row.name,
+    fundType: row.fundType,
+    venue: row.venue,
+    fundCompany: row.fundCompany ?? undefined,
+    trackingTargetCode: row.trackingTargetCode ?? undefined,
+    shareClass: row.shareClass,
+    parentFundCode: row.parentFundCode ?? undefined,
+    enabled: row.enabled === 1
+  }));
+}
+
+export function upsertFundReturnSnapshots(
+  db: Database.Database,
+  rows: Array<{ snapshot: FundReturnSnapshot; venue: ProductVenue }>,
+  syncRunId: string,
+  updatedAt: string
+): void {
+  const insert = db.prepare(`
+    INSERT OR REPLACE INTO fund_return_snapshots (
+      fund_code, venue, as_of_date, returns_json, sync_run_id, updated_at
+    ) VALUES (
+      @fundCode, @venue, @asOfDate, @returnsJson, @syncRunId, @updatedAt
+    )
+  `);
+  const tx = db.transaction(() => {
+    for (const row of rows) {
+      insert.run({
+        fundCode: row.snapshot.fundCode,
+        venue: row.venue,
+        asOfDate: row.snapshot.asOfDate,
+        returnsJson: JSON.stringify(row.snapshot.returns),
+        syncRunId,
+        updatedAt
+      });
+    }
+  });
+  tx();
+}
+
+export function queryFundReturnSnapshots(
+  db: Database.Database,
+  fundCodes: string[]
+): Record<string, FundReturnSnapshot> {
+  if (fundCodes.length === 0) return {};
+  const placeholders = fundCodes.map(() => "?").join(",");
+  const rows = db.prepare(`
+    SELECT fund_code AS fundCode, as_of_date AS asOfDate, returns_json AS returnsJson
+    FROM fund_return_snapshots
+    WHERE fund_code IN (${placeholders})
+  `).all(...fundCodes) as Array<{ fundCode: string; asOfDate: string; returnsJson: string }>;
+
+  const out: Record<string, FundReturnSnapshot> = {};
+  for (const row of rows) {
+    const parsed = parseStoredReturns(row.returnsJson);
+    if (!parsed) continue;
+    out[row.fundCode] = {
+      fundCode: row.fundCode,
+      asOfDate: row.asOfDate,
+      returns: parsed
+    };
+  }
+  return out;
+}
+
+export function queryFundReturnsCacheUpdatedAt(db: Database.Database, fundCodes: string[]): string | null {
+  if (fundCodes.length === 0) return null;
+  const placeholders = fundCodes.map(() => "?").join(",");
+  const row = db.prepare(`
+    SELECT MAX(updated_at) AS updatedAt
+    FROM fund_return_snapshots
+    WHERE fund_code IN (${placeholders})
+  `).get(...fundCodes) as { updatedAt: string | null } | undefined;
+  return row?.updatedAt ?? null;
+}
+
+function parseStoredReturns(raw: string): Record<FundReturnPeriod, number | null> | null {
+  try {
+    const value = JSON.parse(raw) as Partial<Record<FundReturnPeriod, number | null>>;
+    const returns = {} as Record<FundReturnPeriod, number | null>;
+    for (const period of FUND_RETURN_PERIODS) {
+      const next = value[period];
+      returns[period] = typeof next === "number" && Number.isFinite(next) ? next : null;
+    }
+    return returns;
+  } catch {
+    return null;
+  }
 }

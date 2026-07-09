@@ -74,9 +74,13 @@ function compareDirectLimitRows(candidate: PurchaseLimit, incumbent: PurchaseLim
   const confidenceDiff = (candidate.confidence ?? 0) - (incumbent.confidence ?? 0);
   if (confidenceDiff !== 0) return confidenceDiff;
 
-  const candidateAmount = candidate.limitAmountYuan != null ? 1 : 0;
-  const incumbentAmount = incumbent.limitAmountYuan != null ? 1 : 0;
+  const candidateAmount = hasLimitAmount(candidate) ? 1 : 0;
+  const incumbentAmount = hasLimitAmount(incumbent) ? 1 : 0;
   return candidateAmount - incumbentAmount;
+}
+
+function hasLimitAmount(row: PurchaseLimit): boolean {
+  return row.limitAmount != null || row.limitAmountYuan != null;
 }
 
 export async function fetchDirectChannelLimits(

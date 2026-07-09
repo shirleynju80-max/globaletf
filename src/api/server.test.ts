@@ -241,4 +241,32 @@ describe("local API", () => {
     expect(data.offExchange.find((row: { code: string }) => row.code === "000834")).toMatchObject({ limitAmountYuan: 888 });
     expect(data.syncStatus?.purchaseLimit?.status).toBeDefined();
   });
+
+  it("serves fund return snapshots for requested fund codes", async () => {
+    const db = createInMemoryDatabase();
+    const { upsertFundReturnSnapshots } = await import("../db/repositories");
+    upsertFundReturnSnapshots(db, [{
+      snapshot: {
+        fundCode: "000834",
+        asOfDate: "2026-06-25",
+        returns: { "1w": null, "1m": null, "3m": null, "6m": null, "1y": 0.2 }
+      },
+      venue: "off_exchange"
+    }], "test-run", "2026-07-07T00:00:00.000Z");
+
+    const app = createApp(db);
+    const server = app.listen(0);
+    const address = server.address();
+    if (!address || typeof address === "string") throw new Error("Expected TCP server address");
+
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/api/fund-returns?codes=000834&venues=off_exchange`
+    );
+    const data = await response.json();
+    server.close();
+
+    expect(response.status).toBe(200);
+    expect(data.cached).toBe(true);
+    expect(data.returns["000834"].returns["1y"]).toBeCloseTo(0.2, 4);
+  });
 });

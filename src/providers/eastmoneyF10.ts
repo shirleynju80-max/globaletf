@@ -1,5 +1,5 @@
 import { defaultChannelIdForFund, defaultChannelScopeForShareClass, isOtcPurchaseLimitFund } from "../domain/purchaseLimits";
-import { parseMoneyYuan, parsePurchaseStatus } from "../domain/limitText";
+import { parseMoneyLimit, parseMoneyYuan, parsePurchaseStatus } from "../domain/limitText";
 import type { FeeTier, Fund, PurchaseLimit } from "../domain/types";
 import type { DataProvider, ProviderFetchResult } from "./types";
 import { fetchWithTimeout, mapConcurrent } from "./requestUtils";
@@ -35,6 +35,7 @@ export function parseEastMoneyF10FeesAndLimits(input: ParseInput): { limit: Purc
   const limitChannelId = "eastmoney_aggregate" as const;
   const statusText = lookupCellAfterLabel(input.html, "申购状态");
   const limitText = lookupCellAfterLabel(sectionHtml(input.html, "申购与赎回金额"), "日累计申购限额");
+  const limitAmount = parseMoneyLimit(limitText);
   const base = {
     fundCode: input.fund.code,
     channelScope,
@@ -49,6 +50,8 @@ export function parseEastMoneyF10FeesAndLimits(input: ParseInput): { limit: Purc
       ...base,
       shareClass: input.fund.shareClass,
       status: parsePurchaseStatus(statusText),
+      limitAmount: limitAmount?.amount,
+      limitCurrency: limitAmount?.currency,
       limitAmountYuan: parseMoneyYuan(limitText),
       limitUnit: limitText ? "per_day" : "unknown",
       confidence: 0.9,

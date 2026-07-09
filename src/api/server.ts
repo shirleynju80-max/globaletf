@@ -4,9 +4,10 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type Database from "better-sqlite3";
 import { openDatabase } from "../db/database";
-import { queryIndexComparison, queryDiscoveryHealthForTarget, queryLandingStats, queryOnExchangeFundCodes, queryStockConcentration, querySyncStatus } from "../db/repositories";
+import { queryFundReturnSnapshots, queryFundReturnsCacheUpdatedAt, queryIndexComparison, queryDiscoveryHealthForTarget, queryLandingStats, queryOnExchangeFundCodes, queryStockConcentration, querySyncStatus } from "../db/repositories";
 import { TARGETS } from "../domain/targets";
 import { fetchLivePremiums } from "../providers/eastmoneyLiveQuotes";
+import type { FundReturnRequest } from "../providers/fundHistoricalReturns";
 import { queryPriorIopvSnapshots } from "../sync/iopvQuoteEnrichment";
 import { runDailySync } from "../sync/syncRunner";
 import { cachePublic, noStore } from "./httpCache";
@@ -70,6 +71,22 @@ export function createApp(db: Database.Database, options: CreateAppOptions = {})
   app.get("/api/stock-concentration/:stockCode", cachePublic(300, 600), (req, res) => {
     const dedupe = req.query.expandPeers !== "1";
     res.json(queryStockConcentration(db, routeParam(req.params.stockCode), { dedupe }));
+  });
+
+  app.get("/api/fund-returns", cachePublic(3600, 7200), (req, res) => {
+    const funds = parseFundReturnRequests(req.query.codes, req.query.venues);
+    if (funds.length === 0) {
+      res.json({ asOf: new Date().toISOString(), returns: {}, cached: true });
+      return;
+    }
+    const fundCodes = funds.map((fund) => fund.fundCode);
+    const returns = queryFundReturnSnapshots(db, fundCodes);
+    const cacheUpdatedAt = queryFundReturnsCacheUpdatedAt(db, fundCodes);
+    res.json({
+      asOf: cacheUpdatedAt ?? new Date().toISOString(),
+      returns,
+      cached: true
+    });
   });
 
   app.get("/api/status", cachePublic(60), (_req, res) => {
@@ -145,6 +162,18 @@ function parseFundCodeFilter(value: unknown): Set<string> | null {
   if (typeof value !== "string" || !value.trim()) return null;
   const codes = value.split(",").map((code) => code.trim()).filter(Boolean);
   return codes.length > 0 ? new Set(codes) : null;
+}
+
+function parseFundReturnRequests(codesValue: unknown, venuesValue: unknown): FundReturnRequest[] {
+  if (typeof codesValue !== "string" || !codesValue.trim()) return [];
+  const codes = codesValue.split(",").map((code) => code.trim()).filter(Boolean);
+  const venues = typeof venuesValue === "string"
+    ? venuesValue.split(",").map((venue) => venue.trim())
+    : [];
+  return codes.map((fundCode, index) => ({
+    fundCode,
+    venue: venues[index] === "on_exchange" ? "on_exchange" : "off_exchange"
+  }));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

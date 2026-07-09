@@ -3,6 +3,7 @@ export type ProductVenue = "on_exchange" | "off_exchange";
 export type ShareClass = "A" | "C" | "F" | "I" | "E" | "Y" | "D" | "O" | "ETF" | "LOF" | "UNKNOWN";
 export type ChannelScope = "agency" | "direct" | "special" | "unknown";
 export type PurchaseStatus = "open" | "limited" | "suspended" | "unknown";
+export type LimitCurrency = "CNY" | "USD";
 export type FeeType = "subscription" | "redemption" | "management" | "custodian" | "sales_service";
 
 export interface Target {
@@ -54,6 +55,10 @@ export interface PurchaseLimit {
   fundCode: string;
   shareClass: ShareClass;
   status: PurchaseStatus;
+  /** Raw disclosed amount in its native currency. */
+  limitAmount?: number;
+  limitCurrency?: LimitCurrency;
+  /** Compatibility field for RMB-denominated limits. */
   limitAmountYuan?: number;
   limitUnit?: "per_day" | "per_order" | "unknown";
   channelScope: ChannelScope;

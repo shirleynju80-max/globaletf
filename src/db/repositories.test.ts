@@ -42,6 +42,44 @@ describe("repositories", () => {
     });
   });
 
+  it("persists and returns non-CNY purchase limit amounts for index comparison rows", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "017642", name: "摩根纳指100美元现汇", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "F", enabled: true }
+      ],
+      quotes: [],
+      limits: [{
+        fundCode: "017642",
+        shareClass: "F",
+        status: "limited",
+        limitAmount: 10,
+        limitCurrency: "USD",
+        limitUnit: "per_day",
+        channelScope: "direct",
+        channelId: "cifm",
+        source: "fundco-announcement-cifm",
+        dataDate: "2026-03-31",
+        confidence: 0.95,
+        syncRunId: "run-1"
+      }],
+      fees: [],
+      holdings: []
+    });
+
+    const result = queryIndexComparison(db, "NASDAQ_100");
+
+    expect(result.offExchange[0]).toMatchObject({
+      code: "017642",
+      status: "limited",
+      limitAmountYuan: null,
+      limitAmount: 10,
+      limitCurrency: "USD",
+      limitUnit: "per_day"
+    });
+  });
+
   it("orders index comparison rows by liquidity and purchase capacity", () => {
     const db = createInMemoryDatabase();
     insertSnapshotBundle(db, {
@@ -456,6 +494,46 @@ describe("repositories", () => {
       expect.objectContaining({ fundCode: "000834", fundName: "纳指100联接A", shareClass: "A", navPercent: 10.1, reportPeriod: "2026Q1", purchaseStatus: "limited", limitAmountYuan: 5000, limitUnit: "per_day", limitDataDate: "2026-06-10" }),
       expect.objectContaining({ fundCode: "513100", fundName: "纳指ETF", shareClass: "ETF", navPercent: 9.2, reportPeriod: "2026Q1" })
     ]);
+  });
+
+  it("returns non-CNY purchase limit amounts for stock concentration rows", () => {
+    const db = createInMemoryDatabase();
+    insertSnapshotBundle(db, {
+      syncRunId: "run-1",
+      funds: [
+        { code: "017642", name: "摩根纳指100美元现汇", fundType: "QDII", venue: "off_exchange", trackingTargetCode: "NASDAQ_100", shareClass: "F", enabled: true }
+      ],
+      quotes: [],
+      limits: [{
+        fundCode: "017642",
+        shareClass: "F",
+        status: "limited",
+        limitAmount: 10,
+        limitCurrency: "USD",
+        limitUnit: "per_day",
+        channelScope: "direct",
+        channelId: "cifm",
+        source: "fundco-announcement-cifm",
+        dataDate: "2026-03-31",
+        confidence: 0.95,
+        syncRunId: "run-1"
+      }],
+      fees: [],
+      holdings: [
+        { fundCode: "017642", stockCode: "NVDA", stockName: "NVIDIA Corp", navPercent: 10.1, reportPeriod: "2026Q1", source: "eastmoney", syncRunId: "run-1" }
+      ]
+    });
+
+    const result = queryStockConcentration(db, "NVDA");
+
+    expect(result.rows[0]).toMatchObject({
+      fundCode: "017642",
+      purchaseStatus: "limited",
+      limitAmountYuan: null,
+      limitAmount: 10,
+      limitCurrency: "USD",
+      limitUnit: "per_day"
+    });
   });
 
   it("enriches on-exchange LOF rows with OTC purchase limits", () => {

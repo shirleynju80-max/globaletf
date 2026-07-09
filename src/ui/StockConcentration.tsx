@@ -1,6 +1,9 @@
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import type { StockConcentrationRow } from "../db/repositories";
+import type { FundReturnSnapshot } from "../domain/fundReturnPeriods";
+import { FUND_RETURN_PERIOD_LABELS, FUND_RETURN_PERIODS, formatReturnPercent, returnTone } from "../domain/fundReturnPeriods";
 import { lookupStockKey } from "../domain/stockHoldingIndex";
+import { sortStockConcentrationRows, type StockConcentrationSortKey } from "../domain/stockConcentrationSort";
 import { STOCK_TARGETS, findTargetByCode } from "../domain/targets";
 import {
   matchesStockConcentrationFilters,
@@ -17,15 +20,35 @@ const FILTER_OPTIONS: Array<{ key: StockConcentrationFilterKey; label: string }>
 interface Props {
   selectedStock: string;
   rows: StockConcentrationRow[];
+  returnsByCode: Record<string, FundReturnSnapshot | undefined>;
+  returnsLoading: boolean;
   expandPeers: boolean;
   onSelectStock: (stockCode: string) => void;
   onExpandPeersChange: (expandPeers: boolean) => void;
 }
 
-export function StockConcentration({ selectedStock, rows, expandPeers, onSelectStock, onExpandPeersChange }: Props) {
+export function StockConcentration({
+  selectedStock,
+  rows,
+  returnsByCode,
+  returnsLoading,
+  expandPeers,
+  onSelectStock,
+  onExpandPeersChange
+}: Props) {
   const [customStock, setCustomStock] = useState("");
   const [activeFilters, setActiveFilters] = useState<StockConcentrationFilterKey[]>([]);
-  const filteredRows = (rows ?? []).filter((row) => matchesStockConcentrationFilters(row, activeFilters));
+  const [sortKey, setSortKey] = useState<StockConcentrationSortKey>("navPercent");
+  const [sortDesc, setSortDesc] = useState(true);
+
+  const filteredRows = useMemo(
+    () => (rows ?? []).filter((row) => matchesStockConcentrationFilters(row, activeFilters)),
+    [rows, activeFilters]
+  );
+  const displayRows = useMemo(
+    () => sortStockConcentrationRows(filteredRows, returnsByCode, sortKey, sortDesc),
+    [filteredRows, returnsByCode, sortKey, sortDesc]
+  );
 
   function submitCustomStock(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -34,6 +57,23 @@ export function StockConcentration({ selectedStock, rows, expandPeers, onSelectS
     const target = findTargetByCode(input);
     onSelectStock(target?.code ?? lookupStockKey(input));
   }
+
+  function handleSort(nextKey: StockConcentrationSortKey) {
+    if (sortKey === nextKey) {
+      setSortDesc((current) => !current);
+      return;
+    }
+    setSortKey(nextKey);
+    setSortDesc(nextKey === "limit" ? false : true);
+  }
+
+  const asOfDate = useMemo(() => {
+    const dates = Object.values(returnsByCode)
+      .map((snapshot) => snapshot?.asOfDate)
+      .filter(Boolean)
+      .sort();
+    return dates.at(-1) ?? null;
+  }, [returnsByCode]);
 
   return (
     <section className="panel compact-panel">
@@ -71,6 +111,8 @@ export function StockConcentration({ selectedStock, rows, expandPeers, onSelectS
         </form>
       </div>
       <p className="query-chip">当前查询：{formatSelectedStockLabel(selectedStock)}</p>
+      {asOfDate ? <p className="stock-meta">涨跌幅截至 {asOfDate} 收盘（净值/场内价）</p> : null}
+      {returnsLoading ? <p className="stock-meta">涨跌幅加载中…</p> : null}
       <div className="segmented-control stock-filter" aria-label="筛选持仓基金">
         <button
           type="button"
@@ -101,32 +143,40 @@ export function StockConcentration({ selectedStock, rows, expandPeers, onSelectS
         展开全部同类指数产品
       </label>
 
-      <div className="table-wrap">
-        <table className="data-table">
+      <div className="table-wrap table-wrap-sticky">
+        <table className="data-table data-table-sticky">
           <thead>
             <tr>
-              <th>排名</th>
-              <th className="col-name">基金</th>
+              <th className="col-sticky col-name">基金</th>
               <th>类型</th>
               <th>份额</th>
               <th>市场</th>
               <th>持仓股票</th>
-              <th>净值占比</th>
+              <SortableHeader label="净值占比" sortKey="navPercent" activeKey={sortKey} sortDesc={sortDesc} onSort={handleSort} />
+              {FUND_RETURN_PERIODS.map((period) => (
+                <SortableHeader
+                  key={period}
+                  label={FUND_RETURN_PERIOD_LABELS[period]}
+                  sortKey={period}
+                  activeKey={sortKey}
+                  sortDesc={sortDesc}
+                  onSort={handleSort}
+                />
+              ))}
               <th>申购状态</th>
-              <th>限额</th>
+              <SortableHeader label="限额" sortKey="limit" activeKey={sortKey} sortDesc={sortDesc} onSort={handleSort} />
               <th>报告期</th>
             </tr>
           </thead>
           <tbody>
-            {filteredRows.length === 0 ? (
+            {displayRows.length === 0 ? (
               <tr>
-                <td colSpan={10}>暂无 {formatSelectedStockLabel(selectedStock)} 持仓数据</td>
+                <td colSpan={12}>暂无 {formatSelectedStockLabel(selectedStock)} 持仓数据</td>
               </tr>
             ) : (
-              filteredRows.map((row, index) => (
+              displayRows.map((row) => (
                 <tr key={`${row.fundCode}-${row.stockCode}-${row.reportPeriod}`}>
-                  <td>{index + 1}</td>
-                  <td className="col-name">
+                  <td className="col-sticky col-name">
                     <span className="mono">{row.fundCode}</span> {row.fundName}
                   </td>
                   <td>{row.fundKind ?? "—"}</td>
@@ -134,6 +184,13 @@ export function StockConcentration({ selectedStock, rows, expandPeers, onSelectS
                   <td>{formatVenue(row.venue)}</td>
                   <td>{row.stockCode || row.stockName}</td>
                   <td>{formatNavPercent(row.navPercent)}</td>
+                  {FUND_RETURN_PERIODS.map((period) => (
+                    <td key={period} className={`return-cell return-${returnTone(returnsByCode[row.fundCode]?.returns[period])}`}>
+                      {returnsLoading && !returnsByCode[row.fundCode]
+                        ? "…"
+                        : formatReturnPercent(returnsByCode[row.fundCode]?.returns[period])}
+                    </td>
+                  ))}
                   <td>{formatPurchaseStatus(row)}</td>
                   <td>{formatLimit(row)}</td>
                   <td>{row.reportPeriod}</td>
@@ -144,6 +201,30 @@ export function StockConcentration({ selectedStock, rows, expandPeers, onSelectS
         </table>
       </div>
     </section>
+  );
+}
+
+function SortableHeader({
+  label,
+  sortKey,
+  activeKey,
+  sortDesc,
+  onSort
+}: {
+  label: string;
+  sortKey: StockConcentrationSortKey;
+  activeKey: StockConcentrationSortKey;
+  sortDesc: boolean;
+  onSort: (key: StockConcentrationSortKey) => void;
+}) {
+  const active = activeKey === sortKey;
+  const indicator = active ? (sortDesc ? " ↓" : " ↑") : "";
+  return (
+    <th>
+      <button type="button" className="sort-header-btn" onClick={() => onSort(sortKey)}>
+        {label}{indicator}
+      </button>
+    </th>
   );
 }
 
@@ -181,17 +262,26 @@ function formatPurchaseStatus(row: { purchaseStatus?: string | null; venue?: str
 
 function formatLimit(row: {
   purchaseStatus?: string | null;
+  limitAmount?: number | null;
+  limitCurrency?: string | null;
   limitAmountYuan?: number | null;
   limitUnit?: string | null;
   venue?: string;
   shareClass?: string;
 }): string {
-  if (row.limitAmountYuan != null) return `${formatCurrency(row.limitAmountYuan)}${formatLimitUnit(row.limitUnit)}`;
+  const amount = row.limitAmount ?? row.limitAmountYuan;
+  const currency = row.limitCurrency ?? (row.limitAmountYuan != null ? "CNY" : null);
+  if (amount != null) return `${formatLimitAmount(amount, currency)}${formatLimitUnit(row.limitUnit)}`;
   if (row.purchaseStatus === "open") return "开放申购";
   if (row.purchaseStatus === "limited") return "限额待确认";
   if (row.purchaseStatus === "suspended") return "暂停申购";
   if (row.venue === "on_exchange" && row.shareClass === "ETF") return "场内交易";
   return "—";
+}
+
+function formatLimitAmount(value: number, currency?: string | null): string {
+  if (currency === "USD") return `${value.toLocaleString("zh-CN")} 美元`;
+  return formatCurrency(value);
 }
 
 function formatLimitUnit(unit?: string | null): string {

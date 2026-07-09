@@ -5,7 +5,7 @@ export interface OffExchangePartitionRow {
 }
 
 export function needsLimitReview(row: OffExchangePartitionRow): boolean {
-  return Boolean(row.limitStale || row.limitStatusConflict);
+  return Boolean(row.limitStale);
 }
 
 export function partitionOffExchangeRows<T extends OffExchangePartitionRow>(

@@ -1,4 +1,4 @@
-import { parseMoneyYuan, parsePurchaseStatus, shouldPersistCompanyPageLimit } from "../../domain/limitText";
+import { parseMoneyLimit, parseMoneyYuan, parsePurchaseStatus, shouldPersistCompanyPageLimit } from "../../domain/limitText";
 import type { DirectChannelId } from "../../domain/channels";
 import type { Fund, PurchaseLimit } from "../../domain/types";
 import { fetchWithTimeout } from "../requestUtils";
@@ -38,10 +38,13 @@ export function companyPageRowToLimit(
   dataDate: string,
   syncRunId: string
 ): PurchaseLimit {
+  const limitAmount = parseMoneyLimit(row.limitText);
   return {
     fundCode: fund.code,
     shareClass: fund.shareClass,
     status: parsePurchaseStatus(row.statusText),
+    limitAmount: limitAmount?.amount,
+    limitCurrency: limitAmount?.currency,
     limitAmountYuan: parseMoneyYuan(row.limitText),
     limitUnit: row.limitText ? "per_day" : "unknown",
     channelScope: "direct",

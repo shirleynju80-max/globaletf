@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { insertSnapshotBundle, buildFundDiscoveryManifestFunds, recordFundDiscoveryManifest, recordProviderResults, recordSyncRun, recordSyncStatus, replaceDiscoveryProfileGaps, queryCachedHoldingsByFundCode, type ProviderResultRow, type SyncStatusRow } from "../db/repositories";
+import { insertSnapshotBundle, buildFundDiscoveryManifestFunds, recordFundDiscoveryManifest, recordProviderResults, recordSyncRun, recordSyncStatus, replaceDiscoveryProfileGaps, queryCachedHoldingsByFundCode, queryEnabledFunds, type ProviderResultRow, type SyncStatusRow } from "../db/repositories";
 import { INDEX_TARGETS, INDEX_TARGET_FUND_SEED_FUNDS, INDEX_TARGET_FUND_SEEDS } from "../domain/targets";
 import { isDelistedOnExchange } from "../domain/delistedOnExchange";
 import type { FeeTier, Fund, FundHolding, FundQuote, ProductVenue, PurchaseLimit } from "../domain/types";
@@ -23,8 +23,9 @@ import { mergeFundsForHoldingsSync } from "./holdingsSyncUniverse";
 import { finalizeStockHoldingIndex } from "./stockHoldingIndexSync";
 import { mergeFundsForLimitsSync } from "./limitsSyncUniverse";
 import { loadQdiiHoldingsCatalog } from "../providers/qdiiHoldingsCatalog";
+import { syncFundReturns } from "./fundReturnSync";
 
-export type SyncArea = "fund" | "quote" | "offExchange" | "holding";
+export type SyncArea = "fund" | "quote" | "offExchange" | "holding" | "returns";
 
 interface DailySyncOptions {
   useLiveProviders?: boolean;
@@ -36,6 +37,7 @@ interface DailySyncOptions {
   stockScanFundDiscovery?: () => Promise<Fund[]>;
   qdiiHoldingsCatalogLoader?: () => Promise<Fund[]>;
   trackingProfileSync?: (db: Database.Database, funds: Fund[]) => Promise<FundTrackingProfileRow[]>;
+  fetchImpl?: typeof fetch;
   now?: () => number;
 }
 
@@ -55,7 +57,9 @@ interface ResolvedOffExchange {
 }
 
 export async function runDailySync(db: Database.Database, options: DailySyncOptions = {}): Promise<void> {
-  const areas = new Set(options.areas?.length ? options.areas : ["fund", "quote", "offExchange", "holding"]);
+  const defaultAreas: SyncArea[] = ["fund", "quote", "offExchange", "holding"];
+  if (options.useLiveProviders) defaultAreas.push("returns");
+  const areas = new Set(options.areas?.length ? options.areas : defaultAreas);
   const syncRunId = createDailySyncRunId();
   const startedAt = new Date().toISOString();
   const now = options.now ?? Date.now;
@@ -108,6 +112,17 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
   if (areas.has("holding") && holdings && !holdings.isFallback) {
     finalizeStockHoldingIndex(db, syncRunId, qdiiHoldingsCatalog, new Set(fundSnapshot.data.map((fund) => fund.code)));
   }
+  let returnsStatus: Omit<SyncStatusRow, "area" | "updatedAt"> | undefined;
+  let returnsDurationMs: number | undefined;
+  if (areas.has("returns") && options.useLiveProviders) {
+    const returnsStartedAt = now();
+    const fundsForReturns = areas.has("fund") ? fundSnapshot.data : queryEnabledFunds(db);
+    returnsStatus = await syncFundReturns(db, syncRunId, fundsForReturns, {
+      fetchImpl: options.fetchImpl,
+      concurrency: 8
+    });
+    returnsDurationMs = elapsedMs(now, returnsStartedAt);
+  }
   recordFundDiscoveryManifest(db, syncRunId, buildFundDiscoveryManifestFunds(db, fundSnapshot.data), updatedAt);
   replaceDiscoveryProfileGaps(db, syncRunId, fundSnapshot.discoveryProfileGaps ?? [], updatedAt);
   const statuses: SyncStatusRow[] = [];
@@ -118,6 +133,9 @@ export async function runDailySync(db: Database.Database, options: DailySyncOpti
     statuses.push({ area: "fee", durationMs: offExchangeDurationMs, ...offExchangeSnapshot.feeStatus, updatedAt });
   }
   if (holdings && holdingDurationMs != null) statuses.push({ area: "holding", durationMs: holdingDurationMs, ...holdings.status, updatedAt });
+  if (returnsStatus && returnsDurationMs != null) {
+    statuses.push({ area: "fundReturns", durationMs: returnsDurationMs, ...returnsStatus, updatedAt });
+  }
 
   for (const status of statuses) {
     recordSyncStatus(db, { ...status, updatedAt });
@@ -662,9 +680,12 @@ function queryCachedOffExchange(db: Database.Database, funds: Fund[]): OffExchan
       fund_code AS fundCode,
       share_class AS shareClass,
       status,
+      limit_amount AS limitAmount,
+      limit_currency AS limitCurrency,
       limit_amount_yuan AS limitAmountYuan,
       limit_unit AS limitUnit,
       channel_scope AS channelScope,
+      channel_id AS channelId,
       source,
       data_date AS dataDate,
       confidence,

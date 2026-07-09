@@ -320,6 +320,32 @@ describe("IndexComparison", () => {
     expect(screen.getByText("0.80% / 0.20% / 0.00%")).toBeInTheDocument();
   });
 
+  it("formats USD purchase limits without treating them as unknown amounts", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [],
+          offExchange: [{
+            code: "017642",
+            name: "摩根纳指100美元现汇",
+            shareClass: "F",
+            status: "limited",
+            limitAmountYuan: null,
+            limitAmount: 10,
+            limitCurrency: "USD",
+            limitUnit: "per_day",
+            channelScope: "direct",
+            source: "fundco-announcement-cifm"
+          }]
+        }}
+      />
+    );
+
+    expect(screen.getByText("10 美元/日")).toBeInTheDocument();
+    expect(screen.queryByText("限额待确认")).not.toBeInTheDocument();
+  });
+
   it("explains open and unknown off-exchange purchase limits", () => {
     const { container } = render(
       <IndexComparison
@@ -512,6 +538,31 @@ describe("IndexComparison", () => {
     fireEvent.click(screen.getByRole("button", { name: /待核实（1）/ }));
     expect(screen.getByText("待核实")).toBeInTheDocument();
     expect(screen.getByText("直销")).toBeInTheDocument();
+  });
+
+  it("keeps conflict-only rows in the active off-exchange table", () => {
+    render(
+      <IndexComparison
+        targetName="纳斯达克100"
+        data={{
+          onExchange: [],
+          offExchange: [{
+            code: "000834",
+            name: "纳指100联接A",
+            shareClass: "A",
+            status: "limited",
+            limitAmountYuan: 1000,
+            limitUnit: "per_day",
+            limitStatusConflict: true,
+            channelScope: "agency",
+            source: "tiantian"
+          }]
+        }}
+      />
+    );
+
+    expect(screen.getByText("000834")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /待核实/ })).not.toBeInTheDocument();
   });
 
   it("shows discovery source labels and highlights direct-channel rows in the unified off-exchange table", () => {

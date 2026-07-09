@@ -43,6 +43,20 @@ describe("stockScanSelection", () => {
     expect(selectActiveQdiiFundsForStockScan([row]).map((fund) => fund.code)).toEqual(["006308"]);
   });
 
+  it("includes active QDII C shares for stock scan", () => {
+    const row: FundSearchRow = {
+      code: "024239",
+      name: "华夏全球科技先锋混合(QDII)C",
+      shortName: "HX",
+      type: "QDII-混合偏股",
+      pinyin: "HX"
+    };
+    expect(isActiveQdiiStockScanRow(row)).toBe(true);
+    expect(selectActiveQdiiFundsForStockScan([row])).toEqual([
+      expect.objectContaining({ code: "024239", shareClass: "C" })
+    ]);
+  });
+
   it("excludes index QDII even when they are QDII products", () => {
     const row: FundSearchRow = {
       code: "000834",

@@ -315,6 +315,44 @@ body {
   font-size: 12px;
 }
 
+.table-wrap-sticky {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+table.data-table-sticky {
+  min-width: 1100px;
+}
+
+table.data-table-sticky .col-sticky {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  background: #fff;
+  box-shadow: 2px 0 4px rgba(23, 52, 61, 0.06);
+}
+
+table.data-table-sticky thead .col-sticky {
+  z-index: 3;
+}
+
+.return-cell {
+  font-variant-numeric: tabular-nums;
+}
+
+.return-up {
+  color: #b42318;
+}
+
+.return-down {
+  color: #067647;
+}
+
+.return-flat,
+.return-none {
+  color: #51616a;
+}
+
 .table-wrap {
   overflow-x: auto;
 }

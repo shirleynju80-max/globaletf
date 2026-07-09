@@ -157,6 +157,8 @@ function buildDirectLimitFromAnnouncementText(
     fundCode: fund.code,
     shareClass: fund.shareClass,
     status: parsed.status,
+    limitAmount: parsed.limitAmount,
+    limitCurrency: parsed.limitCurrency,
     limitAmountYuan: parsed.limitAmountYuan,
     limitUnit: parsed.limitUnit,
     channelScope: "direct",

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseDirectLimitFromAnnouncement, parseMoneyYuan, parsePurchaseStatus, shouldPersistCompanyPageLimit } from "./limitText";
+import { parseDirectLimitFromAnnouncement, parseMoneyLimit, parseMoneyYuan, parsePurchaseStatus, shouldPersistCompanyPageLimit } from "./limitText";
 
 describe("limitText", () => {
   it("parses purchase status keywords", () => {
@@ -19,6 +19,12 @@ describe("limitText", () => {
     expect(parseMoneyYuan("2.00万元")).toBe(20000);
     expect(parseMoneyYuan("1.50亿元")).toBe(150000000);
     expect(parseMoneyYuan("无限额")).toBeUndefined();
+  });
+
+  it("parses USD limit amounts without forcing them into yuan", () => {
+    expect(parseMoneyLimit("10.00美元")).toEqual({ amount: 10, currency: "USD" });
+    expect(parseMoneyLimit("单日累计申购限额10.00美元")).toEqual({ amount: 10, currency: "USD" });
+    expect(parseMoneyYuan("10.00美元")).toBeUndefined();
   });
 
   it("parses I-class direct limit announcements", () => {
@@ -63,6 +69,21 @@ describe("limitText", () => {
       status: "limited",
       limitAmountYuan: 50000,
       confidence: 0.8
+    });
+  });
+
+  it("parses USD share direct limit announcements", () => {
+    const parsed = parseDirectLimitFromAnnouncement(
+      "自2026年3月31日起，美元份额单日累计申购限额10.00美元。",
+      "F"
+    );
+
+    expect(parsed).toMatchObject({
+      status: "limited",
+      limitAmountYuan: undefined,
+      limitAmount: 10,
+      limitCurrency: "USD",
+      limitUnit: "per_day"
     });
   });
 });
