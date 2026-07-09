@@ -2,6 +2,7 @@ import { directChannelForCompany, TARGET_DIRECT_CHANNELS, type DirectChannelId }
 import { defaultChannelScopeForShareClass } from "../../domain/purchaseLimits";
 import type { Fund, PurchaseLimit } from "../../domain/types";
 import { createEastMoneyF10OffExchangeProvider, type OffExchangeFeeLimitSnapshot } from "../eastmoneyF10";
+import { isForeignCurrencyShare } from "../eastmoneyFundSearch";
 export { createEastMoneyF10OffExchangeProvider, type OffExchangeFeeLimitSnapshot };
 import { mapConcurrent } from "../requestUtils";
 import type { DataProvider } from "../types";
@@ -51,7 +52,7 @@ const DIRECT_FETCHERS: Record<DirectChannelId, DirectFetcher | null> = {
 export function isDirectShareFund(fund: Fund): boolean {
   return fund.enabled
     && fund.venue === "off_exchange"
-    && defaultChannelScopeForShareClass(fund.shareClass) === "direct";
+    && (defaultChannelScopeForShareClass(fund.shareClass) === "direct" || isForeignCurrencyShare(fund.name));
 }
 
 export function mergeDirectLimits(rows: PurchaseLimit[]): PurchaseLimit[] {

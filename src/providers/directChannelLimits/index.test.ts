@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Fund, PurchaseLimit } from "../../domain/types";
-import { mergeDirectLimits } from "./index";
+import { isDirectShareFund, mergeDirectLimits } from "./index";
 
 const baseLimit = (overrides: Partial<PurchaseLimit>): PurchaseLimit => ({
   fundCode: "021000",
@@ -34,5 +34,20 @@ describe("mergeDirectLimits", () => {
     ]);
     expect(merged).toHaveLength(1);
     expect(merged[0]).toMatchObject({ status: "suspended", source: "fundco-announcement-bosera" });
+  });
+});
+
+describe("isDirectShareFund", () => {
+  it("includes foreign-currency OTC shares so official announcement limits can fill USD amounts", () => {
+    const fund: Fund = {
+      code: "017642",
+      name: "摩根标普500指数(QDII)美钞",
+      fundType: "指数型-海外股票",
+      venue: "off_exchange",
+      shareClass: "A",
+      enabled: true
+    };
+
+    expect(isDirectShareFund(fund)).toBe(true);
   });
 });

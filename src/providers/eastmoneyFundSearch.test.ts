@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { createEastMoneyFundSearchProvider, createEastMoneyMultiTargetFundSearchProvider, parseEastMoneyFundSearch, parseEastMoneyFundSuggestions, selectFundsForTarget } from "./eastmoneyFundSearch";
+import { createEastMoneyFundSearchProvider, createEastMoneyMultiTargetFundSearchProvider, isForeignCurrencyShare, parseEastMoneyFundSearch, parseEastMoneyFundSuggestions, selectFundsForTarget } from "./eastmoneyFundSearch";
 
 const sampleScript = `var r = [
   ["000834","DCNSDK100ETFLJQDIIA","大成纳斯达克100ETF联接(QDII)A","指数型-海外股票","DACHENG"],
@@ -79,6 +79,12 @@ describe("East Money fund search parser", () => {
         otherName: "汇添富中证100ETF,中证100ETF基金"
       }
     ]);
+  });
+
+  it("recognizes common foreign-currency share names", () => {
+    expect(isForeignCurrencyShare("摩根标普500指数(QDII)美钞")).toBe(true);
+    expect(isForeignCurrencyShare("摩根标普500指数(QDII)美汇")).toBe(true);
+    expect(isForeignCurrencyShare("广发纳斯达克100ETF联接美元(QDII)A")).toBe(true);
   });
 
   it("selects Nasdaq 100 A/C/F off-exchange funds and on-exchange products", () => {

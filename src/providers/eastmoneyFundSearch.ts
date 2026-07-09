@@ -151,7 +151,7 @@ function isTargetRelevantRow(row: FundSearchRow, targetCode: string): boolean {
 }
 
 export function isForeignCurrencyShare(name: string): boolean {
-  return /美元|现汇|现钞/.test(name);
+  return /美元|现汇|现钞|美钞|美汇/.test(name);
 }
 
 export async function fetchEastMoneyFundSuggestionsForQueries(
