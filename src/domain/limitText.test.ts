@@ -86,4 +86,20 @@ describe("limitText", () => {
       limitUnit: "per_day"
     });
   });
+
+  it("treats paused large subscriptions with disclosed caps as limited USD amounts", () => {
+    const parsed = parseDirectLimitFromAnnouncement(
+      "暂停大额申购起始日2026年6月5日。下属分级基金的017641019305017642017643交易代码该分级基金是否暂停大额申购是是是是下属分级基金的限制申购金额10.00元10.00元1.00美元1.00美元下属分级基金的限制定期定额投资金额10.00元10.00元1.00美元1.00美元。单个基金账户单个美元份额类别的单日申购及定期定额投资金额累计限额为1.00美元。",
+      "A",
+      "017642"
+    );
+
+    expect(parsed).toMatchObject({
+      status: "limited",
+      limitAmountYuan: undefined,
+      limitAmount: 1,
+      limitCurrency: "USD",
+      limitUnit: "per_day"
+    });
+  });
 });

@@ -1,7 +1,7 @@
 import { CATALOG_FUNDS } from "../../domain/fundCatalog";
+import { directChannelForCompany } from "../../domain/channels";
 import { parseDirectLimitFromAnnouncement } from "../../domain/limitText";
 import type { Fund, PurchaseLimit } from "../../domain/types";
-import { defaultChannelIdForFund } from "../../domain/purchaseLimits";
 import { fetchWithTimeout } from "../requestUtils";
 import {
   fetchEastMoneyAnnouncementContent,
@@ -55,9 +55,10 @@ export function announcementPriority(title: string): number {
 export function pickLimitAnnouncement(rows: AnnouncementRow[]): AnnouncementRow | null {
   const candidates = rows.filter((row) => announcementPriority(row.title) > 0);
   return candidates.sort((a, b) => {
+    const priorityCmp = announcementPriority(b.title) - announcementPriority(a.title);
+    if (priorityCmp !== 0) return priorityCmp;
     const dateCmp = b.date.localeCompare(a.date);
-    if (dateCmp !== 0) return dateCmp;
-    return announcementPriority(b.title) - announcementPriority(a.title);
+    return dateCmp;
   })[0] ?? null;
 }
 
@@ -152,7 +153,7 @@ function buildDirectLimitFromAnnouncementText(
   const parsed = parseDirectLimitFromAnnouncement(text, fund.shareClass, fund.code);
   if (!parsed) return null;
 
-  const channelId = defaultChannelIdForFund(fund.shareClass, fund.fundCompany);
+  const channelId = directChannelForCompany(fund.fundCompany);
   return {
     fundCode: fund.code,
     shareClass: fund.shareClass,

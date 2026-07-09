@@ -45,6 +45,14 @@ describe("direct announcement limits", () => {
     expect(picked?.artCode).toBe("AN2");
   });
 
+  it("keeps amount-limit announcements ahead of newer temporary suspension notices", () => {
+    const picked = pickLimitAnnouncement([
+      { title: "关于摩根标普500指数(QDII)暂停申购的公告", date: "2026-06-05", artCode: "AN1" },
+      { title: "关于调整摩根标普500指数(QDII)美元份额单日累计申购限额的公告", date: "2026-03-31", artCode: "AN2" }
+    ]);
+    expect(picked?.artCode).toBe("AN2");
+  });
+
   it("fetches direct limit from East Money security announcement detail", async () => {
     const fetchImpl = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
       const url = String(input);

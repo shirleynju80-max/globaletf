@@ -82,8 +82,9 @@ export function parseDirectLimitFromAnnouncement(
 
   if (/暂停.*申购|申购.*暂停/.test(normalized)) {
     const hasExplicitLimit = new RegExp(`${shareClass}\\s*类基金份额限额\\d`).test(normalized)
-      || /金额限制/.test(normalized);
-    if (!hasExplicitLimit) {
+      || /金额限制|限制金额|累计限额|限额为/.test(normalized);
+    const isLargeSubscriptionCap = /暂停大额申购|暂停大额定期定额投资|暂停大额转换转入/.test(normalized);
+    if (!hasExplicitLimit && !isLargeSubscriptionCap) {
       return { status: "suspended", limitUnit: "unknown", confidence: 0.85, excerpt: "暂停申购" };
     }
   }
@@ -111,6 +112,17 @@ export function parseDirectLimitFromAnnouncement(
   }
 
   if (fundCode) {
+    const tableAmount = parseFundCodeTableLimit(normalized, fundCode);
+    if (tableAmount) {
+      return {
+        status: "limited",
+        ...parsedLimitAmount(tableAmount),
+        limitUnit: "per_day",
+        confidence: 0.9,
+        excerpt: `${fundCode}…${tableAmount.amount}${tableAmount.currency === "USD" ? "美元" : "元"}`
+      };
+    }
+
     const segment = normalized.match(new RegExp(`${fundCode}[\\s\\S]{0,160}`))?.[0];
     const amounts = segment ? [...segment.matchAll(/(\d+(?:\.\d+)?(?:亿|万)?(?:元|人民币|美元|美金|USD))/gi)]
       .map((match) => parseMoneyLimit(match[1]))
@@ -177,4 +189,22 @@ export function parseDirectLimitFromAnnouncement(
   }
 
   return null;
+}
+
+function parseFundCodeTableLimit(text: string, fundCode: string): ParsedMoneyLimit | undefined {
+  const codeMatch = text.match(/交易代码((?:\d{6}){2,})/) ?? text.match(/((?:\d{6}){2,})交易代码/);
+  if (!codeMatch || codeMatch.index == null) return undefined;
+
+  const codes: string[] = codeMatch[1]?.match(/\d{6}/g) ?? [];
+  const codeIndex = codes.indexOf(fundCode);
+  if (codeIndex < 0) return undefined;
+
+  const amountStart = text.indexOf("限制申购金额", codeMatch.index + codeMatch[0].length);
+  if (amountStart < 0) return undefined;
+
+  const tail = text.slice(amountStart + "限制申购金额".length);
+  const amountSection = tail.slice(0, 240);
+  const amounts = [...amountSection.matchAll(/(\d+(?:\.\d+)?(?:亿|万)?(?:元|人民币|美元|美金|USD)|--)/gi)]
+    .map((match) => match[1] === "--" ? undefined : parseMoneyLimit(match[1]));
+  return amounts[codeIndex];
 }
