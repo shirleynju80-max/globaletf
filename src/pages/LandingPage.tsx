@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { fetchIndexComparison, fetchLandingStats, fetchLivePremium, fetchStockConcentration } from "../api/client";
 import { SITE_NAME, SITE_TAGLINE } from "../lib/brand";
 import { navigateTo } from "../lib/navigation";
+import { SiteFooter } from "../ui/SiteFooter";
 import { SiteNav } from "../ui/SiteNav";
 import {
   buildIndexPreviewRows,
@@ -243,13 +244,7 @@ export function LandingPage() {
         </section>
       </main>
 
-      <footer className="landing-footer">
-        <p>{SITE_NAME} · {SITE_TAGLINE}</p>
-        <p className="landing-footer-muted">
-          <a href="/status" onClick={(event) => { event.preventDefault(); navigateTo("/status"); }}>数据状态</a>
-          {" · "}数据来自公开渠道，不构成投资建议
-        </p>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }
